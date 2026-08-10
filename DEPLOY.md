@@ -42,7 +42,7 @@ Vercel deploys by connecting to a GitHub repo.
    | `APP_URL` | your Vercel URL, e.g. `https://restaurant-qr-ordering.vercel.app` (you'll know the exact URL after the first deploy — you can update this env var afterward and redeploy) |
 4. Click Deploy. Vercel will run `npm install` and `next build` automatically.
 
-## 4. Set up the database schema + demo data
+## 4. Set up the database schema + real menu data
 
 Once you have the `DATABASE_URL` from Neon, run this **from your own machine**
 (pointed at the Neon database) — Vercel's free tier doesn't give you a shell,
@@ -54,9 +54,9 @@ npm run prisma:migrate -- --name init
 npm run seed
 ```
 
-This creates the tables and seeds a demo restaurant, an admin login
-(`owner@demo.com` / `password123` — change this before real use), 5 tables,
-and a sample menu, directly in your live Neon database.
+`prisma/seed.ts` contains the real restaurant, admin login, 5 tables (with
+the same QR tokens as before, so already-printed codes still work), and the
+full menu — not demo data.
 
 ## 5. Access your live app
 

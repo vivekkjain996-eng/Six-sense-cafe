@@ -1,0 +1,48 @@
+import { db } from "@/lib/db";
+
+export async function getLiveTables(restaurantId: string) {
+  const tables = await db.restaurantTable.findMany({
+    where: { restaurantId },
+    orderBy: { tableNumber: "asc" },
+    include: {
+      sessions: {
+        where: { status: "OPEN" },
+        include: {
+          orders: {
+            orderBy: { placedAt: "asc" },
+            include: { items: true },
+          },
+        },
+      },
+    },
+  });
+
+  return tables.map((table) => {
+    const openSession = table.sessions[0];
+    return {
+      id: table.id,
+      tableNumber: table.tableNumber,
+      status: table.status,
+      session: openSession
+        ? {
+            id: openSession.id,
+            grandTotal: openSession.grandTotal,
+            paymentStatus: openSession.paymentStatus,
+            orders: openSession.orders.map((order) => ({
+              id: order.id,
+              status: order.status,
+              placedAt: order.placedAt.toISOString(),
+              items: order.items.map((item) => ({
+                id: item.id,
+                itemNameSnapshot: item.itemNameSnapshot,
+                quantity: item.quantity,
+                lineTotal: item.lineTotal,
+              })),
+            })),
+          }
+        : null,
+    };
+  });
+}
+
+export type LiveTable = Awaited<ReturnType<typeof getLiveTables>>[number];

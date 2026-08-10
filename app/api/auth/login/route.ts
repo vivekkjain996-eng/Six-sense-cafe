@@ -29,7 +29,9 @@ export async function POST(req: NextRequest) {
   const token = signAdminToken({
     adminId: admin.id,
     restaurantId: admin.restaurantId,
-    role: admin.role,
+    // SQLite has no native enum type, so `role` is stored as a plain string
+    // constrained to these two values by the seed/admin-creation code.
+    role: admin.role as "OWNER" | "KITCHEN",
   });
   await setAdminSessionCookie(token);
 

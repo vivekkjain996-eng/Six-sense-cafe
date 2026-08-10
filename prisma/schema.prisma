@@ -7,33 +7,16 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-enum AdminRole {
-  OWNER
-  KITCHEN
-}
-
-enum TableStatus {
-  AVAILABLE
-  OCCUPIED
-}
-
-enum SessionStatus {
-  OPEN
-  CLOSED
-}
-
-enum PaymentStatus {
-  UNPAID
-  PAID
-}
-
-enum OrderStatus {
-  PENDING
-  PREPARING
-  READY
-  SERVED
-  CANCELLED
-}
+// Status/role fields below are plain strings (not native Postgres enums)
+// constrained to a fixed set of values at the application layer, so the
+// schema stayed unchanged when this project moved from SQLite (no enum
+// support) to Postgres:
+//   AdminUser.role:            "OWNER" | "KITCHEN"
+//   RestaurantTable.status:    "AVAILABLE" | "OCCUPIED"
+//   TableSession.status:       "OPEN" | "CLOSED"
+//   TableSession.paymentStatus:"UNPAID" | "PAID"
+//   TableSession.paymentMethod:"CASH" | "CARD" | "ONLINE" (null until paid)
+//   Order.status:              "PENDING" | "PREPARING" | "READY" | "SERVED" | "CANCELLED"
 
 model Restaurant {
   id        String   @id @default(uuid())
@@ -55,7 +38,7 @@ model AdminUser {
   name         String
   email        String    @unique
   passwordHash String
-  role         AdminRole @default(OWNER)
+  role         String    @default("OWNER")
   createdAt    DateTime  @default(now())
 }
 
@@ -66,7 +49,7 @@ model RestaurantTable {
   restaurant   Restaurant  @relation(fields: [restaurantId], references: [id])
   tableNumber  Int
   qrToken      String      @unique @default(uuid())
-  status       TableStatus @default(AVAILABLE)
+  status       String      @default("AVAILABLE")
   createdAt    DateTime    @default(now())
 
   sessions TableSession[]
@@ -92,7 +75,7 @@ model MenuItem {
   category     Category   @relation(fields: [categoryId], references: [id])
   name         String
   description  String?
-  price        Decimal    @db.Decimal(10, 2)
+  price        Float
   imageUrl     String?
   isVeg        Boolean    @default(true)
   isAvailable  Boolean    @default(true)
@@ -108,11 +91,12 @@ model TableSession {
   id            String        @id @default(uuid())
   tableId       String
   table         RestaurantTable @relation(fields: [tableId], references: [id])
-  status        SessionStatus @default(OPEN)
-  paymentStatus PaymentStatus @default(UNPAID)
-  subtotal      Decimal       @default(0) @db.Decimal(10, 2)
-  tax           Decimal       @default(0) @db.Decimal(10, 2)
-  grandTotal    Decimal       @default(0) @db.Decimal(10, 2)
+  status        String        @default("OPEN")
+  paymentStatus String        @default("UNPAID")
+  paymentMethod String?
+  subtotal      Float         @default(0)
+  tax           Float         @default(0)
+  grandTotal    Float         @default(0)
   openedAt      DateTime      @default(now())
   closedAt      DateTime?
 
@@ -124,7 +108,7 @@ model Order {
   id             String      @id @default(uuid())
   tableSessionId String
   tableSession   TableSession @relation(fields: [tableSessionId], references: [id])
-  status         OrderStatus @default(PENDING)
+  status         String      @default("PENDING")
   placedAt       DateTime    @default(now())
 
   items OrderItem[]
@@ -137,7 +121,7 @@ model OrderItem {
   menuItemId       String
   menuItem         MenuItem @relation(fields: [menuItemId], references: [id])
   itemNameSnapshot String
-  priceSnapshot    Decimal  @db.Decimal(10, 2)
+  priceSnapshot    Float
   quantity         Int
-  lineTotal        Decimal  @db.Decimal(10, 2)
+  lineTotal        Float
 }
