@@ -1,0 +1,143 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum AdminRole {
+  OWNER
+  KITCHEN
+}
+
+enum TableStatus {
+  AVAILABLE
+  OCCUPIED
+}
+
+enum SessionStatus {
+  OPEN
+  CLOSED
+}
+
+enum PaymentStatus {
+  UNPAID
+  PAID
+}
+
+enum OrderStatus {
+  PENDING
+  PREPARING
+  READY
+  SERVED
+  CANCELLED
+}
+
+model Restaurant {
+  id        String   @id @default(uuid())
+  name      String
+  address   String?
+  phone     String?
+  createdAt DateTime @default(now())
+
+  adminUsers AdminUser[]
+  tables     RestaurantTable[]
+  categories Category[]
+  menuItems  MenuItem[]
+}
+
+model AdminUser {
+  id           String    @id @default(uuid())
+  restaurantId String
+  restaurant   Restaurant @relation(fields: [restaurantId], references: [id])
+  name         String
+  email        String    @unique
+  passwordHash String
+  role         AdminRole @default(OWNER)
+  createdAt    DateTime  @default(now())
+}
+
+// Named RestaurantTable to avoid clashing with the reserved word "Table" in some tooling.
+model RestaurantTable {
+  id           String      @id @default(uuid())
+  restaurantId String
+  restaurant   Restaurant  @relation(fields: [restaurantId], references: [id])
+  tableNumber  Int
+  qrToken      String      @unique @default(uuid())
+  status       TableStatus @default(AVAILABLE)
+  createdAt    DateTime    @default(now())
+
+  sessions TableSession[]
+
+  @@unique([restaurantId, tableNumber])
+}
+
+model Category {
+  id           String     @id @default(uuid())
+  restaurantId String
+  restaurant   Restaurant @relation(fields: [restaurantId], references: [id])
+  name         String
+  sortOrder    Int        @default(0)
+
+  menuItems MenuItem[]
+}
+
+model MenuItem {
+  id           String     @id @default(uuid())
+  restaurantId String
+  restaurant   Restaurant @relation(fields: [restaurantId], references: [id])
+  categoryId   String
+  category     Category   @relation(fields: [categoryId], references: [id])
+  name         String
+  description  String?
+  price        Decimal    @db.Decimal(10, 2)
+  imageUrl     String?
+  isVeg        Boolean    @default(true)
+  isAvailable  Boolean    @default(true)
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+
+  orderItems OrderItem[]
+}
+
+// The running bill for one seating at a table. Stays OPEN while the table
+// keeps ordering; admin closes it once payment is settled.
+model TableSession {
+  id            String        @id @default(uuid())
+  tableId       String
+  table         RestaurantTable @relation(fields: [tableId], references: [id])
+  status        SessionStatus @default(OPEN)
+  paymentStatus PaymentStatus @default(UNPAID)
+  subtotal      Decimal       @default(0) @db.Decimal(10, 2)
+  tax           Decimal       @default(0) @db.Decimal(10, 2)
+  grandTotal    Decimal       @default(0) @db.Decimal(10, 2)
+  openedAt      DateTime      @default(now())
+  closedAt      DateTime?
+
+  orders Order[]
+}
+
+// One row per "place order" submission from the customer.
+model Order {
+  id             String      @id @default(uuid())
+  tableSessionId String
+  tableSession   TableSession @relation(fields: [tableSessionId], references: [id])
+  status         OrderStatus @default(PENDING)
+  placedAt       DateTime    @default(now())
+
+  items OrderItem[]
+}
+
+model OrderItem {
+  id               String   @id @default(uuid())
+  orderId          String
+  order            Order    @relation(fields: [orderId], references: [id])
+  menuItemId       String
+  menuItem         MenuItem @relation(fields: [menuItemId], references: [id])
+  itemNameSnapshot String
+  priceSnapshot    Decimal  @db.Decimal(10, 2)
+  quantity         Int
+  lineTotal        Decimal  @db.Decimal(10, 2)
+}
