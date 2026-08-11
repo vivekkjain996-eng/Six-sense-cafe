@@ -28,6 +28,7 @@ export async function getLiveTables(restaurantId: string) {
             id: openSession.id,
             grandTotal: openSession.grandTotal,
             paymentStatus: openSession.paymentStatus,
+            waiterCallRequestedAt: openSession.waiterCallRequestedAt?.toISOString() ?? null,
             orders: openSession.orders.map((order) => ({
               id: order.id,
               status: order.status,

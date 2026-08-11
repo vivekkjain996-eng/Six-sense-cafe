@@ -70,8 +70,35 @@ export default function OrderingClient({
   const [summary, setSummary] = useState<SessionSummary | null>(null);
   const [placing, setPlacing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [waiterCallState, setWaiterCallState] = useState<"idle" | "sending" | "sent">("idle");
+  const [cooldownUntil, setCooldownUntil] = useState<number | null>(null);
+  const [cooldownSecondsLeft, setCooldownSecondsLeft] = useState(0);
 
   const allItems = categories.flatMap((c) => c.menuItems);
+
+  useEffect(() => {
+    if (!cooldownUntil) return;
+    const interval = setInterval(() => {
+      const secondsLeft = Math.max(0, Math.ceil((cooldownUntil - Date.now()) / 1000));
+      setCooldownSecondsLeft(secondsLeft);
+      if (secondsLeft <= 0) {
+        setCooldownUntil(null);
+        setWaiterCallState("idle");
+      }
+    }, 500);
+    return () => clearInterval(interval);
+  }, [cooldownUntil]);
+
+  async function callWaiter() {
+    setWaiterCallState("sending");
+    const res = await fetch(`/api/sessions/${sessionId}/waiter-call`, { method: "POST" });
+    if (res.ok) {
+      setWaiterCallState("sent");
+      setCooldownUntil(Date.now() + 60_000);
+    } else {
+      setWaiterCallState("idle");
+    }
+  }
 
   async function loadSummary() {
     const res = await fetch(`/api/sessions/${sessionId}`);
@@ -129,6 +156,23 @@ export default function OrderingClient({
 
   return (
     <>
+      <button
+        onClick={callWaiter}
+        disabled={waiterCallState !== "idle"}
+        className={`fixed right-4 z-30 flex items-center gap-1.5 rounded-full px-4 py-3 text-sm font-semibold shadow-xl transition disabled:cursor-not-allowed ${
+          cartEntries.length > 0 ? "bottom-24" : "bottom-6"
+        } ${
+          waiterCallState === "sent"
+            ? "bg-green-600 text-white"
+            : "bg-stone-900 text-amber-400 hover:bg-stone-800"
+        }`}
+      >
+        {waiterCallState === "sending" && "Calling..."}
+        {waiterCallState === "sent" &&
+          `✓ Waiter notified${cooldownSecondsLeft > 0 ? ` (${cooldownSecondsLeft}s)` : ""}`}
+        {waiterCallState === "idle" && "🔔 Call Waiter"}
+      </button>
+
       {summary && summary.orders.length > 0 && (
         <div className="sticky top-[124px] z-10 mx-4 mt-3 flex items-center justify-between rounded-xl bg-stone-900 px-4 py-2.5 shadow-md">
           <span className="text-sm text-amber-100">

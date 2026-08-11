@@ -4,6 +4,7 @@ import { getAdminSession } from "@/lib/auth";
 import { db } from "@/lib/db";
 import PrintButton from "@/components/admin/PrintButton";
 import CloseBillButton from "@/components/admin/CloseBillButton";
+import { formatISTDateTime, formatISTTime } from "@/lib/time";
 
 const STATUS_LABEL: Record<string, string> = {
   PENDING: "Order received",
@@ -60,7 +61,7 @@ export default async function BillPage({
           <h1 className="text-xl font-bold text-slate-900">{session.table.restaurant.name}</h1>
           <p className="text-slate-600">Table {session.table.tableNumber}</p>
           <p className="mt-1 text-xs text-slate-400">
-            Bill opened {session.openedAt.toLocaleString()}
+            Bill opened {formatISTDateTime(session.openedAt)} IST
           </p>
         </div>
 
@@ -68,7 +69,7 @@ export default async function BillPage({
           {activeOrders.map((order) => (
             <div key={order.id}>
               <div className="flex items-center justify-between text-sm text-slate-500">
-                <span>{order.placedAt.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}</span>
+                <span>{formatISTTime(order.placedAt)} IST</span>
                 <span>{STATUS_LABEL[order.status] ?? order.status}</span>
               </div>
               {order.items.map((item) => (

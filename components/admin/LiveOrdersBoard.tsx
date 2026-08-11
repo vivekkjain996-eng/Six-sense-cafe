@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import type { LiveTable } from "@/lib/liveTables";
+import { formatISTTime } from "@/lib/time";
 
 const STATUS_LABEL: Record<string, string> = {
   PENDING: "Order received",
@@ -73,10 +74,21 @@ export default function LiveOrdersBoard({ initialTables }: { initialTables: Live
     }
   }
 
+  async function handleAcknowledgeWaiterCall(sessionId: string) {
+    const res = await fetch(`/api/admin/sessions/${sessionId}/waiter-call`, {
+      method: "DELETE",
+    });
+    if (res.ok) {
+      await refreshTables();
+    }
+  }
+
   const pendingCount = tables.reduce(
     (n, t) => n + (t.session?.orders.filter((o) => o.status === "PENDING").length ?? 0),
     0,
   );
+
+  const waiterCallTables = tables.filter((t) => t.session?.waiterCallRequestedAt);
 
   const visibleTables = tables.filter(
     (t) => tableFilter === "ALL" || String(t.tableNumber) === tableFilter,
@@ -84,6 +96,19 @@ export default function LiveOrdersBoard({ initialTables }: { initialTables: Live
 
   return (
     <>
+      {waiterCallTables.length > 0 && (
+        <div className="mb-4 flex items-center gap-3 rounded-xl border border-red-300 bg-gradient-to-r from-red-50 to-rose-50 p-4 shadow-sm">
+          <span className="relative flex h-3 w-3">
+            <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-red-500 opacity-75" />
+            <span className="relative inline-flex h-3 w-3 rounded-full bg-red-600" />
+          </span>
+          <p className="text-sm font-semibold text-red-900">
+            Table{waiterCallTables.length > 1 ? "s" : ""}{" "}
+            {waiterCallTables.map((t) => t.tableNumber).join(", ")} calling for a waiter
+          </p>
+        </div>
+      )}
+
       {pendingCount > 0 && (
         <div className="mb-4 flex items-center gap-3 rounded-xl border border-amber-300 bg-gradient-to-r from-amber-50 to-orange-50 p-4 shadow-sm">
           <span className="relative flex h-3 w-3">
@@ -137,6 +162,7 @@ export default function LiveOrdersBoard({ initialTables }: { initialTables: Live
           const filteredOrders =
             statusFilter === "ALL" ? allOrders : allOrders.filter((o) => o.status === statusFilter);
           const hasPending = allOrders.some((o) => o.status === "PENDING");
+          const isCallingWaiter = Boolean(session?.waiterCallRequestedAt);
 
           // When filtering by status across all tables, hide tables with no
           // matches instead of showing empty cards. A specific table filter
@@ -149,20 +175,52 @@ export default function LiveOrdersBoard({ initialTables }: { initialTables: Live
             <div
               key={table.id}
               className={`overflow-hidden rounded-xl border bg-white shadow-sm transition-shadow hover:shadow-md ${
-                hasPending ? "border-amber-300 ring-2 ring-amber-100" : "border-slate-200"
+                isCallingWaiter
+                  ? "animate-pulse border-red-400 ring-2 ring-red-200"
+                  : hasPending
+                    ? "border-amber-300 ring-2 ring-amber-100"
+                    : "border-slate-200"
               }`}
             >
               <div
                 className={`h-1.5 w-full ${
-                  table.status === "OCCUPIED"
-                    ? "bg-gradient-to-r from-amber-400 to-orange-400"
-                    : "bg-gradient-to-r from-green-400 to-emerald-400"
+                  isCallingWaiter
+                    ? "bg-gradient-to-r from-red-500 to-rose-500"
+                    : table.status === "OCCUPIED"
+                      ? "bg-gradient-to-r from-amber-400 to-orange-400"
+                      : "bg-gradient-to-r from-green-400 to-emerald-400"
                 }`}
               />
 
+              {isCallingWaiter && session && (
+                <div className="flex items-center justify-between gap-2 bg-red-50 px-4 py-2">
+                  <span className="flex items-center gap-2 text-sm font-semibold text-red-700">
+                    <span className="relative flex h-2.5 w-2.5">
+                      <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-red-500 opacity-75" />
+                      <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-red-600" />
+                    </span>
+                    Waiter called
+                  </span>
+                  <button
+                    onClick={() => handleAcknowledgeWaiterCall(session.id)}
+                    className="rounded-md bg-red-600 px-2.5 py-1 text-xs font-semibold text-white shadow-sm transition hover:bg-red-700"
+                  >
+                    Acknowledge
+                  </button>
+                </div>
+              )}
+
               <div className="p-4">
                 <div className="flex items-center justify-between">
-                  <h2 className="text-lg font-semibold text-slate-900">Table {table.tableNumber}</h2>
+                  <h2 className="flex items-center gap-2 text-lg font-semibold text-slate-900">
+                    Table {table.tableNumber}
+                    {hasPending && (
+                      <span className="relative flex h-2.5 w-2.5" title="New order waiting">
+                        <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-amber-400 opacity-75" />
+                        <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-amber-500" />
+                      </span>
+                    )}
+                  </h2>
                   <span
                     className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${
                       table.status === "OCCUPIED"
@@ -191,10 +249,7 @@ export default function LiveOrdersBoard({ initialTables }: { initialTables: Live
                         >
                           <div className="flex items-center justify-between gap-2">
                             <span className="text-xs text-slate-500">
-                              {new Date(order.placedAt).toLocaleTimeString([], {
-                                hour: "numeric",
-                                minute: "2-digit",
-                              })}
+                              {formatISTTime(order.placedAt)}
                             </span>
                             <select
                               value={order.status}

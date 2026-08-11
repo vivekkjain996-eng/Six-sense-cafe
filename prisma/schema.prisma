@@ -99,6 +99,7 @@ model TableSession {
   grandTotal    Float         @default(0)
   openedAt      DateTime      @default(now())
   closedAt      DateTime?
+  waiterCallRequestedAt DateTime?
 
   orders Order[]
 }
