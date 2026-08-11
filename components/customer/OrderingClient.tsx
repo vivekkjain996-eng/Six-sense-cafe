@@ -9,6 +9,7 @@ interface MenuItemView {
   price: number;
   isVeg: boolean;
   isAvailable: boolean;
+  imageUrl: string | null;
 }
 
 interface CategoryView {
@@ -63,6 +64,28 @@ function statusAccentClass(status: string) {
   return "border-l-blue-400";
 }
 
+function ItemImage({ src, alt }: { src: string | null; alt: string }) {
+  const [broken, setBroken] = useState(false);
+
+  if (!src || broken) {
+    return (
+      <div className="flex h-16 w-16 flex-shrink-0 items-center justify-center rounded-lg bg-amber-100 text-2xl">
+        🍽️
+      </div>
+    );
+  }
+
+  return (
+    // eslint-disable-next-line @next/next/no-img-element
+    <img
+      src={src}
+      alt={alt}
+      onError={() => setBroken(true)}
+      className="h-16 w-16 flex-shrink-0 rounded-lg border border-stone-100 object-cover"
+    />
+  );
+}
+
 export default function OrderingClient({
   sessionId,
   categories,
@@ -77,6 +100,7 @@ export default function OrderingClient({
   const [waiterCallState, setWaiterCallState] = useState<"idle" | "sending" | "sent">("idle");
   const [cooldownUntil, setCooldownUntil] = useState<number | null>(null);
   const [cooldownSecondsLeft, setCooldownSecondsLeft] = useState(0);
+  const [activeCategoryId, setActiveCategoryId] = useState(categories[0]?.id);
 
   const allItems = categories.flatMap((c) => c.menuItems);
 
@@ -116,6 +140,33 @@ export default function OrderingClient({
     const interval = setInterval(loadSummary, POLL_INTERVAL_MS);
     return () => clearInterval(interval);
   }, []);
+
+  // Highlights whichever category pill matches the section currently
+  // scrolled near the top, so the nav stays oriented on a long menu.
+  useEffect(() => {
+    const observer = new IntersectionObserver(
+      (entries) => {
+        const visible = entries.filter((e) => e.isIntersecting);
+        if (visible.length === 0) return;
+        const topMost = visible.reduce((a, b) =>
+          a.boundingClientRect.top < b.boundingClientRect.top ? a : b,
+        );
+        setActiveCategoryId(topMost.target.id.replace("cat-", ""));
+      },
+      { rootMargin: "-70px 0px -70% 0px", threshold: 0 },
+    );
+
+    categories.forEach((category) => {
+      const el = document.getElementById(`cat-${category.id}`);
+      if (el) observer.observe(el);
+    });
+
+    return () => observer.disconnect();
+  }, [categories]);
+
+  function scrollToCategory(id: string) {
+    document.getElementById(`cat-${id}`)?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
 
   function setQuantity(menuItemId: string, quantity: number) {
     setCart((prev) => {
@@ -160,12 +211,174 @@ export default function OrderingClient({
     await loadSummary();
   }
 
+  const discountAmount = summary ? summary.subtotal * (summary.discountPercent / 100) : 0;
+
   return (
     <>
+      <nav className="sticky top-0 z-20 flex h-14 items-center gap-2 overflow-x-auto border-b border-amber-200 bg-amber-50/95 px-4 backdrop-blur">
+        {categories.map((category) => (
+          <button
+            key={category.id}
+            onClick={() => scrollToCategory(category.id)}
+            className={`flex-shrink-0 rounded-full border px-3 py-1.5 text-sm font-medium shadow-sm transition ${
+              activeCategoryId === category.id
+                ? "border-amber-500 bg-amber-500 text-white"
+                : "border-amber-300 bg-white text-stone-700 hover:bg-amber-100"
+            }`}
+          >
+            {category.name}
+          </button>
+        ))}
+      </nav>
+
+      {summary && summary.orders.length > 0 && (
+        <div className="sticky top-14 z-10 mx-4 mt-3 rounded-xl bg-stone-900 px-4 py-2.5 shadow-md">
+          <div className="flex items-center justify-between">
+            <span className="text-sm text-amber-100">
+              {summary.orders.length} order{summary.orders.length > 1 ? "s" : ""} on this bill
+            </span>
+            <span className="text-lg font-bold text-amber-400">₹{summary.grandTotal.toFixed(2)}</span>
+          </div>
+          {summary.discountPercent > 0 && (
+            <p className="mt-0.5 text-right text-xs font-medium text-green-400">
+              {summary.discountPercent}% discount applied — you saved ₹{discountAmount.toFixed(2)}
+            </p>
+          )}
+        </div>
+      )}
+
+      <div className="mx-auto max-w-xl space-y-8 p-4">
+        {summary && summary.orders.length > 0 && (
+          <section>
+            <div className="mb-3 flex items-center gap-2">
+              <span className="h-5 w-1.5 rounded-full bg-amber-400" />
+              <h2 className="text-lg font-bold text-stone-800">Your Bill</h2>
+            </div>
+
+            <div className="space-y-3">
+              {summary.orders.map((order) => (
+                <div
+                  key={order.id}
+                  className={`rounded-xl border-l-4 bg-white p-4 shadow-sm ${statusAccentClass(order.status)}`}
+                >
+                  <div className="mb-2 flex items-center justify-between">
+                    <span className="text-xs text-stone-400">
+                      {new Date(order.placedAt).toLocaleTimeString([], {
+                        hour: "numeric",
+                        minute: "2-digit",
+                      })}
+                    </span>
+                    <span
+                      className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${statusBadgeClass(order.status)}`}
+                    >
+                      {STATUS_LABEL[order.status] ?? order.status}
+                    </span>
+                  </div>
+                  <div className="space-y-1">
+                    {order.items.map((item) => (
+                      <div key={item.id} className="flex justify-between text-sm text-stone-700">
+                        <span>
+                          {item.quantity}x {item.itemNameSnapshot}
+                        </span>
+                        <span>₹{item.lineTotal.toFixed(2)}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <div className="mt-3 space-y-1 rounded-xl bg-white p-4 shadow-sm">
+              <div className="flex justify-between text-sm text-stone-600">
+                <span>Subtotal</span>
+                <span>₹{summary.subtotal.toFixed(2)}</span>
+              </div>
+              {summary.discountPercent > 0 && (
+                <div className="flex justify-between text-sm text-green-700">
+                  <span>Discount ({summary.discountPercent}%)</span>
+                  <span>-₹{discountAmount.toFixed(2)}</span>
+                </div>
+              )}
+              <div className="flex justify-between border-t border-dashed border-stone-200 pt-2 text-base font-bold text-stone-900">
+                <span>Total</span>
+                <span>₹{summary.grandTotal.toFixed(2)}</span>
+              </div>
+            </div>
+          </section>
+        )}
+
+        {categories.map((category) => (
+          <section key={category.id} id={`cat-${category.id}`} className="scroll-mt-20">
+            <div className="mb-3 flex items-center gap-2">
+              <span className="h-5 w-1.5 rounded-full bg-amber-400" />
+              <h2 className="text-lg font-bold text-stone-800">{category.name}</h2>
+            </div>
+            <div className="space-y-3">
+              {category.menuItems.map((item) => {
+                const qty = cart[item.id] ?? 0;
+                return (
+                  <div
+                    key={item.id}
+                    className={`flex gap-3 rounded-xl border bg-white p-3 shadow-sm transition ${
+                      item.isAvailable
+                        ? "border-stone-200 hover:shadow-md"
+                        : "border-stone-100 opacity-60"
+                    }`}
+                  >
+                    <ItemImage src={item.imageUrl} alt={item.name} />
+
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-1.5">
+                        <span
+                          aria-label={item.isVeg ? "Veg" : "Non-veg"}
+                          className={`inline-block h-3 w-3 flex-shrink-0 rounded-sm border-2 ${
+                            item.isVeg ? "border-green-600" : "border-red-600"
+                          }`}
+                        />
+                        <h3 className="truncate font-semibold text-stone-900">{item.name}</h3>
+                      </div>
+                      {item.description && (
+                        <p className="mt-0.5 line-clamp-1 text-sm text-stone-500">{item.description}</p>
+                      )}
+                      {!item.isAvailable && (
+                        <p className="mt-1 text-xs font-medium text-red-600">Currently unavailable</p>
+                      )}
+
+                      <div className="mt-1.5 flex items-center justify-between">
+                        <span className="font-bold text-amber-700">₹{item.price.toFixed(2)}</span>
+
+                        {item.isAvailable && (
+                          <div className="flex items-center gap-1 rounded-full border border-amber-200 bg-amber-50 p-1">
+                            <button
+                              onClick={() => setQuantity(item.id, qty - 1)}
+                              disabled={qty === 0}
+                              className="flex h-8 w-8 items-center justify-center rounded-full bg-white font-bold text-amber-700 shadow-sm disabled:opacity-40"
+                            >
+                              −
+                            </button>
+                            <span className="w-6 text-center font-semibold text-stone-800">{qty}</span>
+                            <button
+                              onClick={() => setQuantity(item.id, qty + 1)}
+                              className="flex h-8 w-8 items-center justify-center rounded-full bg-amber-500 font-bold text-white shadow-sm transition hover:bg-amber-600"
+                            >
+                              +
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </section>
+        ))}
+      </div>
+
       <button
         onClick={callWaiter}
         disabled={waiterCallState !== "idle"}
-        className={`fixed right-4 z-30 flex items-center gap-1.5 rounded-full px-4 py-3 text-sm font-semibold shadow-xl transition disabled:cursor-not-allowed ${
+        className={`fixed right-4 z-30 flex items-center gap-1.5 rounded-full px-4 py-3 text-sm font-semibold shadow-xl transition-all disabled:cursor-not-allowed ${
           cartEntries.length > 0 ? "bottom-24" : "bottom-6"
         } ${
           waiterCallState === "sent"
@@ -178,115 +391,6 @@ export default function OrderingClient({
           `✓ Waiter notified${cooldownSecondsLeft > 0 ? ` (${cooldownSecondsLeft}s)` : ""}`}
         {waiterCallState === "idle" && "🔔 Call Waiter"}
       </button>
-
-      {summary && summary.orders.length > 0 && (
-        <div className="sticky top-[124px] z-10 mx-4 mt-3 rounded-xl bg-stone-900 px-4 py-2.5 shadow-md">
-          <div className="flex items-center justify-between">
-            <span className="text-sm text-amber-100">
-              {summary.orders.length} order{summary.orders.length > 1 ? "s" : ""} on this bill
-            </span>
-            <span className="text-lg font-bold text-amber-400">₹{summary.grandTotal.toFixed(2)}</span>
-          </div>
-          {summary.discountPercent > 0 && (
-            <p className="mt-0.5 text-right text-xs font-medium text-green-400">
-              {summary.discountPercent}% discount applied — you saved ₹
-              {(summary.subtotal * (summary.discountPercent / 100)).toFixed(2)}
-            </p>
-          )}
-        </div>
-      )}
-
-      <div className="mx-auto max-w-xl space-y-8 p-4">
-        {summary && summary.orders.length > 0 && (
-          <section>
-            <div className="mb-3 flex items-center gap-2">
-              <span className="h-5 w-1.5 rounded-full bg-amber-400" />
-              <h2 className="text-lg font-bold text-stone-800">Your orders on this bill</h2>
-            </div>
-            <div className="space-y-3">
-              {summary.orders.map((order) => (
-                <div
-                  key={order.id}
-                  className={`rounded-xl border-l-4 bg-white p-4 shadow-sm ${statusAccentClass(order.status)}`}
-                >
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm font-medium text-stone-700">
-                      {order.items.map((i) => `${i.quantity}x ${i.itemNameSnapshot}`).join(", ")}
-                    </span>
-                    <span
-                      className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${statusBadgeClass(order.status)}`}
-                    >
-                      {STATUS_LABEL[order.status] ?? order.status}
-                    </span>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </section>
-        )}
-
-        {categories.map((category) => (
-          <section key={category.id} id={`cat-${category.id}`} className="scroll-mt-32">
-            <div className="mb-3 flex items-center gap-2">
-              <span className="h-5 w-1.5 rounded-full bg-amber-400" />
-              <h2 className="text-lg font-bold text-stone-800">{category.name}</h2>
-            </div>
-            <div className="space-y-3">
-              {category.menuItems.map((item) => {
-                const qty = cart[item.id] ?? 0;
-                return (
-                  <div
-                    key={item.id}
-                    className={`flex items-start justify-between rounded-xl border bg-white p-4 shadow-sm transition ${
-                      item.isAvailable
-                        ? "border-stone-200 hover:shadow-md"
-                        : "border-stone-100 opacity-60"
-                    }`}
-                  >
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <span
-                          aria-label={item.isVeg ? "Veg" : "Non-veg"}
-                          className={`inline-block h-3 w-3 flex-shrink-0 rounded-sm border-2 ${
-                            item.isVeg ? "border-green-600" : "border-red-600"
-                          }`}
-                        />
-                        <h3 className="font-semibold text-stone-900">{item.name}</h3>
-                      </div>
-                      {item.description && (
-                        <p className="mt-1 text-sm text-stone-500">{item.description}</p>
-                      )}
-                      <p className="mt-1 font-bold text-amber-700">₹{item.price.toFixed(2)}</p>
-                      {!item.isAvailable && (
-                        <p className="mt-1 text-xs font-medium text-red-600">Currently unavailable</p>
-                      )}
-                    </div>
-
-                    {item.isAvailable && (
-                      <div className="flex items-center gap-1 rounded-full border border-amber-200 bg-amber-50 p-1">
-                        <button
-                          onClick={() => setQuantity(item.id, qty - 1)}
-                          disabled={qty === 0}
-                          className="flex h-7 w-7 items-center justify-center rounded-full bg-white font-bold text-amber-700 shadow-sm disabled:opacity-40"
-                        >
-                          −
-                        </button>
-                        <span className="w-6 text-center font-semibold text-stone-800">{qty}</span>
-                        <button
-                          onClick={() => setQuantity(item.id, qty + 1)}
-                          className="flex h-7 w-7 items-center justify-center rounded-full bg-amber-500 font-bold text-white shadow-sm transition hover:bg-amber-600"
-                        >
-                          +
-                        </button>
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-          </section>
-        ))}
-      </div>
 
       {cartEntries.length > 0 && (
         <div className="fixed inset-x-0 bottom-0 border-t border-amber-300 bg-gradient-to-r from-amber-500 to-orange-500 p-4 shadow-2xl">

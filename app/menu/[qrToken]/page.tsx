@@ -38,6 +38,7 @@ export default async function CustomerMenuPage({
           price: true,
           isVeg: true,
           isAvailable: true,
+          imageUrl: true,
         },
       },
     },
@@ -45,24 +46,12 @@ export default async function CustomerMenuPage({
 
   return (
     <main className="min-h-screen bg-amber-50/40 pb-28">
-      <header className="sticky top-0 z-20 bg-gradient-to-r from-neutral-950 via-stone-900 to-neutral-950 px-5 py-4 shadow-lg">
-        <h1 className="text-xl font-bold tracking-wide text-amber-400">{restaurant.name}</h1>
-        <p className="text-sm text-neutral-300">Table {table.tableNumber}</p>
+      <header className="bg-gradient-to-br from-neutral-950 via-stone-900 to-neutral-950 px-5 py-6 text-center shadow-lg">
+        <h1 className="text-2xl font-bold tracking-wide text-amber-400">{restaurant.name}</h1>
+        <p className="mt-1 inline-block rounded-full bg-white/10 px-3 py-1 text-sm text-neutral-200">
+          Table {table.tableNumber}
+        </p>
       </header>
-
-      {categories.length > 0 && (
-        <nav className="sticky top-[68px] z-10 flex gap-2 overflow-x-auto border-b border-amber-200 bg-amber-50/95 px-4 py-2.5 backdrop-blur">
-          {categories.map((category) => (
-            <a
-              key={category.id}
-              href={`#cat-${category.id}`}
-              className="flex-shrink-0 rounded-full border border-amber-300 bg-white px-3 py-1 text-sm font-medium text-stone-700 shadow-sm transition hover:bg-amber-400 hover:text-white"
-            >
-              {category.name}
-            </a>
-          ))}
-        </nav>
-      )}
 
       {categories.length === 0 ? (
         <p className="p-6 text-center text-gray-600">The menu hasn&apos;t been set up yet.</p>
