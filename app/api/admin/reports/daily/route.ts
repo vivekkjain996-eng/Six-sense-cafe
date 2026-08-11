@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getAdminSession } from "@/lib/auth";
-import { getDailyReport, localDateString } from "@/lib/dailyReport";
+import { getEarningsReport, localDateString } from "@/lib/dailyReport";
 
 export async function GET(req: NextRequest) {
   const session = await getAdminSession();
@@ -11,9 +11,10 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "Not allowed" }, { status: 403 });
   }
 
-  const dateParam = req.nextUrl.searchParams.get("date");
-  const dateStr = dateParam ?? localDateString(new Date());
+  const today = localDateString(new Date());
+  const fromStr = req.nextUrl.searchParams.get("from") ?? today;
+  const toStr = req.nextUrl.searchParams.get("to") ?? fromStr;
 
-  const report = await getDailyReport(session.restaurantId, dateStr);
+  const report = await getEarningsReport(session.restaurantId, fromStr, toStr);
   return NextResponse.json(report);
 }

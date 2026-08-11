@@ -18,8 +18,12 @@ export function dayBounds(dateStr: string) {
   return { start, end };
 }
 
-export async function getDailyReport(restaurantId: string, dateStr: string) {
-  const { start, end } = dayBounds(dateStr);
+export function rangeBounds(fromDateStr: string, toDateStr: string) {
+  return { start: dayBounds(fromDateStr).start, end: dayBounds(toDateStr).end };
+}
+
+export async function getEarningsReport(restaurantId: string, fromDateStr: string, toDateStr: string) {
+  const { start, end } = rangeBounds(fromDateStr, toDateStr);
 
   const closedSessions = await db.tableSession.findMany({
     where: {
@@ -42,7 +46,8 @@ export async function getDailyReport(restaurantId: string, dateStr: string) {
   }
 
   return {
-    date: dateStr,
+    from: fromDateStr,
+    to: toDateStr,
     total,
     byMethod,
     bills: closedSessions.map((s) => ({
