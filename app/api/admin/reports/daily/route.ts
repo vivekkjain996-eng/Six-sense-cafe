@@ -7,6 +7,9 @@ export async function GET(req: NextRequest) {
   if (!session) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
+  if (session.role === "WAITER") {
+    return NextResponse.json({ error: "Not allowed" }, { status: 403 });
+  }
 
   const dateParam = req.nextUrl.searchParams.get("date");
   const dateStr = dateParam ?? localDateString(new Date());

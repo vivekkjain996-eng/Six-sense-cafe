@@ -5,6 +5,7 @@ import { db } from "@/lib/db";
 import PrintButton from "@/components/admin/PrintButton";
 import CloseBillButton from "@/components/admin/CloseBillButton";
 import DiscountForm from "@/components/admin/DiscountForm";
+import ShareWhatsAppButton from "@/components/admin/ShareWhatsAppButton";
 import { formatISTDateTime, formatISTTime } from "@/lib/time";
 
 const STATUS_LABEL: Record<string, string> = {
@@ -59,6 +60,22 @@ export default async function BillPage({
           ← Back to dashboard
         </Link>
         <PrintButton />
+      </div>
+
+      <div className="mb-4 print:hidden">
+        <ShareWhatsAppButton
+          restaurantName={session.table.restaurant.name}
+          tableNumber={session.table.tableNumber}
+          items={allItems.map((item) => ({
+            name: item.itemNameSnapshot,
+            quantity: item.quantity,
+            lineTotal: item.lineTotal,
+          }))}
+          subtotal={session.subtotal}
+          discountPercent={session.discountPercent}
+          discountAmount={discountAmount}
+          grandTotal={session.grandTotal}
+        />
       </div>
 
       <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-md">

@@ -7,6 +7,9 @@ export async function DELETE(_req: Request, { params }: { params: Promise<{ id: 
   if (!session) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
+  if (session.role === "WAITER") {
+    return NextResponse.json({ error: "Not allowed" }, { status: 403 });
+  }
 
   const { id } = await params;
 

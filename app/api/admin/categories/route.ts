@@ -12,6 +12,9 @@ export async function POST(req: NextRequest) {
   if (!session) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
+  if (session.role === "WAITER") {
+    return NextResponse.json({ error: "Not allowed" }, { status: 403 });
+  }
 
   const body = await req.json().catch(() => null);
   const parsed = createCategorySchema.safeParse(body);

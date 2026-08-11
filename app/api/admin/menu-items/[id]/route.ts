@@ -27,6 +27,10 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     return NextResponse.json({ error: "Invalid menu item data" }, { status: 400 });
   }
 
+  if (session.role === "WAITER" && Object.keys(body ?? {}).some((key) => key !== "isAvailable")) {
+    return NextResponse.json({ error: "Staff can only mark items available or unavailable" }, { status: 403 });
+  }
+
   const existing = await db.menuItem.findFirst({
     where: { id, restaurantId: session.restaurantId },
   });
@@ -55,6 +59,9 @@ export async function DELETE(_req: Request, { params }: { params: Promise<{ id: 
   const session = await getAdminSession();
   if (!session) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+  if (session.role === "WAITER") {
+    return NextResponse.json({ error: "Not allowed" }, { status: 403 });
   }
 
   const { id } = await params;

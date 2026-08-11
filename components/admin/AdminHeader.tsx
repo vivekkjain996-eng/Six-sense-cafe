@@ -4,9 +4,11 @@ import LogoutButton from "@/components/admin/LogoutButton";
 export default function AdminHeader({
   restaurantName,
   active,
+  role,
 }: {
   restaurantName: string;
-  active: "dashboard" | "menu" | "reports";
+  active: "dashboard" | "menu" | "reports" | "staff";
+  role?: string;
 }) {
   return (
     <header className="bg-gradient-to-r from-slate-900 via-slate-800 to-slate-900 shadow-md">
@@ -43,6 +45,16 @@ export default function AdminHeader({
           >
             Reports
           </Link>
+          {role === "OWNER" && (
+            <Link
+              href="/admin/staff"
+              className={`rounded-md px-3 py-1.5 text-sm font-medium transition ${
+                active === "staff" ? "bg-white text-slate-900" : "text-slate-200 hover:bg-white/10"
+              }`}
+            >
+              Staff
+            </Link>
+          )}
           <LogoutButton />
         </nav>
       </div>

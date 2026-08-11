@@ -12,6 +12,9 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ se
   if (!adminSession) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
+  if (adminSession.role === "WAITER") {
+    return NextResponse.json({ error: "Not allowed" }, { status: 403 });
+  }
 
   const { sessionId } = await params;
 

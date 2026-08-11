@@ -22,7 +22,7 @@ export default async function AdminDashboardPage() {
 
   return (
     <div className="min-h-screen">
-      <AdminHeader restaurantName={restaurant?.name ?? "Restaurant"} active="dashboard" />
+      <AdminHeader restaurantName={restaurant?.name ?? "Restaurant"} active="dashboard" role={session!.role} />
 
       <main className="mx-auto max-w-6xl p-6">
         <div className="mb-6">

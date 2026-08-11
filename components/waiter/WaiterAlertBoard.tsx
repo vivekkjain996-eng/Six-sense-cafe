@@ -15,6 +15,8 @@ const STATUS_LABEL: Record<string, string> = {
   CANCELLED: "Cancelled",
 };
 
+const ALL_STATUSES = ["PENDING", "PREPARING", "READY", "SERVED", "CANCELLED"];
+
 function statusBadgeClass(status: string) {
   if (status === "PENDING") return "bg-amber-100 text-amber-700";
   if (status === "CANCELLED") return "bg-red-100 text-red-700";
@@ -26,6 +28,7 @@ export default function WaiterAlertBoard({ initialTables }: { initialTables: Liv
   const [tables, setTables] = useState<LiveTable[]>(initialTables);
   const [soundEnabled, setSoundEnabled] = useState(false);
   const [acknowledgingId, setAcknowledgingId] = useState<string | null>(null);
+  const [savingOrderId, setSavingOrderId] = useState<string | null>(null);
   const audioCtxRef = useRef<AudioContext | null>(null);
   const priorCallingIdsRef = useRef<Set<string>>(new Set());
 
@@ -91,6 +94,19 @@ export default function WaiterAlertBoard({ initialTables }: { initialTables: Liv
     return () => clearInterval(interval);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [soundEnabled, waiterCallTables.length]);
+
+  async function handleStatusChange(orderId: string, status: string) {
+    setSavingOrderId(orderId);
+    const res = await fetch(`/api/admin/orders/${orderId}/status`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ status }),
+    });
+    setSavingOrderId(null);
+    if (res.ok) {
+      await refreshTables();
+    }
+  }
 
   async function handleAcknowledge(sessionId: string) {
     setAcknowledgingId(sessionId);
@@ -193,11 +209,18 @@ export default function WaiterAlertBoard({ initialTables }: { initialTables: Liv
                       <div key={order.id} className="rounded-lg bg-slate-50 p-2.5">
                         <div className="flex items-center justify-between gap-2">
                           <span className="text-xs text-slate-500">{formatISTTime(order.placedAt)}</span>
-                          <span
-                            className={`rounded-full px-2 py-0.5 text-xs font-semibold ${statusBadgeClass(order.status)}`}
+                          <select
+                            value={order.status}
+                            disabled={savingOrderId === order.id}
+                            onChange={(e) => handleStatusChange(order.id, e.target.value)}
+                            className={`rounded-full border-none px-2 py-0.5 text-xs font-semibold ${statusBadgeClass(order.status)}`}
                           >
-                            {STATUS_LABEL[order.status] ?? order.status}
-                          </span>
+                            {ALL_STATUSES.map((s) => (
+                              <option key={s} value={s}>
+                                {STATUS_LABEL[s]}
+                              </option>
+                            ))}
+                          </select>
                         </div>
                         <p className="mt-1.5 text-sm text-slate-700">
                           {order.items.map((i) => `${i.quantity}x ${i.itemNameSnapshot}`).join(", ")}
