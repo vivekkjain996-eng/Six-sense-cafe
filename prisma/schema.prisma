@@ -115,6 +115,7 @@ model TableSession {
   openedAt      DateTime      @default(now())
   closedAt      DateTime?
   waiterCallRequestedAt DateTime?
+  waiterCallLastNotifiedAt DateTime?
 
   orders Order[]
 }

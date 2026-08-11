@@ -21,7 +21,7 @@ export async function DELETE(_req: Request, { params }: { params: Promise<{ sess
 
   await db.tableSession.update({
     where: { id: sessionId },
-    data: { waiterCallRequestedAt: null },
+    data: { waiterCallRequestedAt: null, waiterCallLastNotifiedAt: null },
   });
 
   return NextResponse.json({ ok: true });

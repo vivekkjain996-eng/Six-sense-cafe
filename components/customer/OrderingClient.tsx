@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { playBellChime } from "@/lib/bellSound";
 
 interface MenuItemView {
   id: string;
@@ -101,6 +102,7 @@ export default function OrderingClient({
   const [cooldownUntil, setCooldownUntil] = useState<number | null>(null);
   const [cooldownSecondsLeft, setCooldownSecondsLeft] = useState(0);
   const [activeCategoryId, setActiveCategoryId] = useState(categories[0]?.id);
+  const audioCtxRef = useRef<AudioContext | null>(null);
 
   const allItems = categories.flatMap((c) => c.menuItems);
 
@@ -119,10 +121,19 @@ export default function OrderingClient({
 
   async function callWaiter() {
     setWaiterCallState("sending");
+
+    // Created inside this click handler so the browser counts it as triggered
+    // by a user gesture — required before audio is allowed to play.
+    if (!audioCtxRef.current) {
+      const AudioCtx = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+      audioCtxRef.current = new AudioCtx();
+    }
+
     const res = await fetch(`/api/sessions/${sessionId}/waiter-call`, { method: "POST" });
     if (res.ok) {
       setWaiterCallState("sent");
       setCooldownUntil(Date.now() + 60_000);
+      playBellChime(audioCtxRef.current, 1);
     } else {
       setWaiterCallState("idle");
     }

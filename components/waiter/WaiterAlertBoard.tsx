@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { LiveTable } from "@/lib/liveTables";
 import { formatISTTime } from "@/lib/time";
+import { playBellChime } from "@/lib/bellSound";
 
 const POLL_INTERVAL_MS = 4000;
 const REPEAT_BEEP_MS = 8000;
@@ -35,18 +36,7 @@ export default function WaiterAlertBoard({ initialTables }: { initialTables: Liv
   function playChime() {
     const ctx = audioCtxRef.current;
     if (!ctx) return;
-    [880, 660].forEach((freq, i) => {
-      const osc = ctx.createOscillator();
-      const gain = ctx.createGain();
-      osc.type = "sine";
-      osc.frequency.value = freq;
-      gain.gain.value = 0.35;
-      osc.connect(gain);
-      gain.connect(ctx.destination);
-      const start = ctx.currentTime + i * 0.22;
-      osc.start(start);
-      osc.stop(start + 0.18);
-    });
+    playBellChime(ctx, 1);
   }
 
   function enableSound() {

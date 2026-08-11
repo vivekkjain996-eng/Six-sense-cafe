@@ -9,7 +9,7 @@ self.addEventListener("push", (event) => {
   const title = data.title || "Waiter called";
   const options = {
     body: data.body || "A table needs assistance",
-    vibrate: [200, 100, 200, 100, 200],
+    vibrate: [300, 100, 300, 100, 300, 100, 300],
     tag: "waiter-call",
     renotify: true,
     requireInteraction: true,
