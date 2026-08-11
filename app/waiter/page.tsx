@@ -4,6 +4,7 @@ import { getLiveTables } from "@/lib/liveTables";
 import { db } from "@/lib/db";
 import WaiterHeader from "@/components/waiter/WaiterHeader";
 import WaiterAlertBoard from "@/components/waiter/WaiterAlertBoard";
+import PushNotificationSetup from "@/components/waiter/PushNotificationSetup";
 
 export default async function WaiterPage() {
   const session = await getAdminSession();
@@ -21,6 +22,7 @@ export default async function WaiterPage() {
       <WaiterHeader restaurantName={restaurant?.name ?? "Restaurant"} active="tables" />
 
       <main className="mx-auto max-w-3xl p-4">
+        <PushNotificationSetup />
         <WaiterAlertBoard initialTables={tables} />
       </main>
     </div>

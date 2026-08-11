@@ -40,6 +40,20 @@ model AdminUser {
   passwordHash String
   role         String    @default("OWNER")
   createdAt    DateTime  @default(now())
+
+  pushSubscriptions PushSubscription[]
+}
+
+// One row per browser/device a staff member enabled push alerts on — a
+// waiter checking alerts from two phones gets two rows.
+model PushSubscription {
+  id          String    @id @default(uuid())
+  adminUserId String
+  adminUser   AdminUser @relation(fields: [adminUserId], references: [id])
+  endpoint    String    @unique
+  p256dh      String
+  auth        String
+  createdAt   DateTime  @default(now())
 }
 
 // Named RestaurantTable to avoid clashing with the reserved word "Table" in some tooling.

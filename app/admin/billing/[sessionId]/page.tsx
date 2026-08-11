@@ -62,20 +62,33 @@ export default async function BillPage({
         <PrintButton />
       </div>
 
-      <div className="mb-4 print:hidden">
-        <ShareWhatsAppButton
-          restaurantName={session.table.restaurant.name}
-          tableNumber={session.table.tableNumber}
-          items={allItems.map((item) => ({
-            name: item.itemNameSnapshot,
-            quantity: item.quantity,
-            lineTotal: item.lineTotal,
-          }))}
-          subtotal={session.subtotal}
-          discountPercent={session.discountPercent}
-          discountAmount={discountAmount}
-          grandTotal={session.grandTotal}
-        />
+      <div className="mb-4 space-y-2 print:hidden">
+        <div className="flex flex-wrap items-center gap-2">
+          <ShareWhatsAppButton
+            restaurantName={session.table.restaurant.name}
+            tableNumber={session.table.tableNumber}
+            items={allItems.map((item) => ({
+              name: item.itemNameSnapshot,
+              quantity: item.quantity,
+              lineTotal: item.lineTotal,
+            }))}
+            subtotal={session.subtotal}
+            discountPercent={session.discountPercent}
+            discountAmount={discountAmount}
+            grandTotal={session.grandTotal}
+          />
+          <a
+            href={`/api/admin/sessions/${session.id}/bill-pdf`}
+            className="rounded-md bg-slate-700 px-4 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-slate-800"
+          >
+            📄 Download bill PDF
+          </a>
+        </div>
+        <p className="text-xs text-slate-500">
+          WhatsApp&apos;s free share link can only pre-fill text, not attach files. For a
+          nicer-looking bill, download the PDF above, then attach it manually in the WhatsApp
+          chat.
+        </p>
       </div>
 
       <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-md">

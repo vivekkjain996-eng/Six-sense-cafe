@@ -7,7 +7,7 @@ export default function AdminHeader({
   role,
 }: {
   restaurantName: string;
-  active: "dashboard" | "menu" | "reports" | "staff";
+  active: "dashboard" | "menu" | "reports" | "staff" | "account";
   role?: string;
 }) {
   return (
@@ -55,6 +55,14 @@ export default function AdminHeader({
               Staff
             </Link>
           )}
+          <Link
+            href="/admin/account"
+            className={`rounded-md px-3 py-1.5 text-sm font-medium transition ${
+              active === "account" ? "bg-white text-slate-900" : "text-slate-200 hover:bg-white/10"
+            }`}
+          >
+            Account
+          </Link>
           <LogoutButton />
         </nav>
       </div>
