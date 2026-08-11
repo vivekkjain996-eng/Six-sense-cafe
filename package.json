@@ -10,7 +10,8 @@
     "lint": "next lint",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
-    "seed": "tsx prisma/seed.ts"
+    "seed": "tsx prisma/seed.ts",
+    "create-waiter": "tsx prisma/createWaiterAccount.ts"
   },
   "dependencies": {
     "@prisma/client": "^5.20.0",

@@ -4,6 +4,7 @@ import { getAdminSession } from "@/lib/auth";
 import { db } from "@/lib/db";
 import PrintButton from "@/components/admin/PrintButton";
 import CloseBillButton from "@/components/admin/CloseBillButton";
+import DiscountForm from "@/components/admin/DiscountForm";
 import { formatISTDateTime, formatISTTime } from "@/lib/time";
 
 const STATUS_LABEL: Record<string, string> = {
@@ -22,6 +23,9 @@ export default async function BillPage({
   const adminSession = await getAdminSession();
   if (!adminSession) {
     redirect("/admin/login");
+  }
+  if (adminSession!.role === "WAITER") {
+    redirect("/waiter");
   }
 
   const { sessionId } = await params;
@@ -43,6 +47,7 @@ export default async function BillPage({
 
   const activeOrders = session.orders.filter((o) => o.status !== "CANCELLED");
   const allItems = activeOrders.flatMap((o) => o.items);
+  const discountAmount = session.subtotal * (session.discountPercent / 100);
 
   return (
     <main className="mx-auto min-h-screen max-w-xl p-6">
@@ -97,6 +102,12 @@ export default async function BillPage({
             <span>Tax</span>
             <span>₹{session.tax.toFixed(2)}</span>
           </div>
+          {session.discountPercent > 0 && (
+            <div className="flex justify-between text-sm text-green-700">
+              <span>Discount ({session.discountPercent}%)</span>
+              <span>-₹{discountAmount.toFixed(2)}</span>
+            </div>
+          )}
           <div className="flex justify-between text-lg font-bold text-slate-900">
             <span>Grand Total</span>
             <span>₹{session.grandTotal.toFixed(2)}</span>
@@ -112,7 +123,8 @@ export default async function BillPage({
         </p>
 
         {session.status === "OPEN" && (
-          <div className="mt-4">
+          <div className="mt-4 space-y-4">
+            <DiscountForm sessionId={session.id} currentDiscountPercent={session.discountPercent} />
             <CloseBillButton sessionId={session.id} />
           </div>
         )}

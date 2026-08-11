@@ -33,9 +33,13 @@ interface OrderView {
 
 interface SessionSummary {
   id: string;
+  subtotal: number;
+  discountPercent: number;
   grandTotal: number;
   orders: OrderView[];
 }
+
+const POLL_INTERVAL_MS = 5000;
 
 const STATUS_LABEL: Record<string, string> = {
   PENDING: "Order received",
@@ -109,6 +113,8 @@ export default function OrderingClient({
 
   useEffect(() => {
     loadSummary();
+    const interval = setInterval(loadSummary, POLL_INTERVAL_MS);
+    return () => clearInterval(interval);
   }, []);
 
   function setQuantity(menuItemId: string, quantity: number) {
@@ -174,11 +180,19 @@ export default function OrderingClient({
       </button>
 
       {summary && summary.orders.length > 0 && (
-        <div className="sticky top-[124px] z-10 mx-4 mt-3 flex items-center justify-between rounded-xl bg-stone-900 px-4 py-2.5 shadow-md">
-          <span className="text-sm text-amber-100">
-            {summary.orders.length} order{summary.orders.length > 1 ? "s" : ""} on this bill
-          </span>
-          <span className="text-lg font-bold text-amber-400">₹{summary.grandTotal.toFixed(2)}</span>
+        <div className="sticky top-[124px] z-10 mx-4 mt-3 rounded-xl bg-stone-900 px-4 py-2.5 shadow-md">
+          <div className="flex items-center justify-between">
+            <span className="text-sm text-amber-100">
+              {summary.orders.length} order{summary.orders.length > 1 ? "s" : ""} on this bill
+            </span>
+            <span className="text-lg font-bold text-amber-400">₹{summary.grandTotal.toFixed(2)}</span>
+          </div>
+          {summary.discountPercent > 0 && (
+            <p className="mt-0.5 text-right text-xs font-medium text-green-400">
+              {summary.discountPercent}% discount applied — you saved ₹
+              {(summary.subtotal * (summary.discountPercent / 100)).toFixed(2)}
+            </p>
+          )}
         </div>
       )}
 

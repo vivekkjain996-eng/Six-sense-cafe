@@ -9,6 +9,9 @@ export default async function AdminMenuPage() {
   if (!session) {
     redirect("/admin/login");
   }
+  if (session!.role === "WAITER") {
+    redirect("/waiter");
+  }
 
   const [categories, restaurant] = await Promise.all([
     db.category.findMany({

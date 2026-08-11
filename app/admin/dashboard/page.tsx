@@ -11,6 +11,9 @@ export default async function AdminDashboardPage() {
   if (!session) {
     redirect("/admin/login");
   }
+  if (session!.role === "WAITER") {
+    redirect("/waiter");
+  }
 
   const [tables, restaurant] = await Promise.all([
     getLiveTables(session!.restaurantId),

@@ -11,7 +11,7 @@ datasource db {
 // constrained to a fixed set of values at the application layer, so the
 // schema stayed unchanged when this project moved from SQLite (no enum
 // support) to Postgres:
-//   AdminUser.role:            "OWNER" | "KITCHEN"
+//   AdminUser.role:            "OWNER" | "KITCHEN" | "WAITER"
 //   RestaurantTable.status:    "AVAILABLE" | "OCCUPIED"
 //   TableSession.status:       "OPEN" | "CLOSED"
 //   TableSession.paymentStatus:"UNPAID" | "PAID"
@@ -96,6 +96,7 @@ model TableSession {
   paymentMethod String?
   subtotal      Float         @default(0)
   tax           Float         @default(0)
+  discountPercent Float       @default(0)
   grandTotal    Float         @default(0)
   openedAt      DateTime      @default(now())
   closedAt      DateTime?

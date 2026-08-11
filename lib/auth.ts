@@ -8,7 +8,7 @@ const COOKIE_NAME = "admin_session";
 export interface AdminTokenPayload {
   adminId: string;
   restaurantId: string;
-  role: "OWNER" | "KITCHEN";
+  role: "OWNER" | "KITCHEN" | "WAITER";
 }
 
 export async function hashPassword(password: string) {

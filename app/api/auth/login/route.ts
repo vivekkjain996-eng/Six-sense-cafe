@@ -30,8 +30,8 @@ export async function POST(req: NextRequest) {
     adminId: admin.id,
     restaurantId: admin.restaurantId,
     // SQLite has no native enum type, so `role` is stored as a plain string
-    // constrained to these two values by the seed/admin-creation code.
-    role: admin.role as "OWNER" | "KITCHEN",
+    // constrained to these values by the seed/admin-creation code.
+    role: admin.role as "OWNER" | "KITCHEN" | "WAITER",
   });
   await setAdminSessionCookie(token);
 

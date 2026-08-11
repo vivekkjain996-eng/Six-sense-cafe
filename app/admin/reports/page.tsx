@@ -10,6 +10,9 @@ export default async function AdminReportsPage() {
   if (!session) {
     redirect("/admin/login");
   }
+  if (session!.role === "WAITER") {
+    redirect("/waiter");
+  }
 
   const today = localDateString(new Date());
 
