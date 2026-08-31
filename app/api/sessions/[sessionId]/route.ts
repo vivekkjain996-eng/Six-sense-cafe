@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { maybeRepeatWaiterCallNotification } from "@/lib/push";
+import { maybeRepeatWaiterCallNotification, maybeRepeatChangeCallNotification } from "@/lib/push";
 
 export async function GET(_req: Request, { params }: { params: Promise<{ sessionId: string }> }) {
   const { sessionId } = await params;
@@ -29,6 +29,19 @@ export async function GET(_req: Request, { params }: { params: Promise<{ session
         id: session.id,
         waiterCallRequestedAt: session.waiterCallRequestedAt,
         waiterCallLastNotifiedAt: session.waiterCallLastNotifiedAt,
+      },
+    }).catch(() => {});
+  }
+
+  if (session.changeCallRequestedAt) {
+    maybeRepeatChangeCallNotification({
+      id: session.table.id,
+      tableNumber: session.table.tableNumber,
+      restaurantId: session.table.restaurantId,
+      session: {
+        id: session.id,
+        changeCallRequestedAt: session.changeCallRequestedAt,
+        changeCallLastNotifiedAt: session.changeCallLastNotifiedAt,
       },
     }).catch(() => {});
   }

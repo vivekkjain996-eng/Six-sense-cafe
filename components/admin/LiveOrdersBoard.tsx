@@ -1,9 +1,10 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import type { LiveTable } from "@/lib/liveTables";
 import { formatISTTime } from "@/lib/time";
+import { playBellChime, playChangeChime } from "@/lib/bellSound";
 
 const STATUS_LABEL: Record<string, string> = {
   PENDING: "Order received",
@@ -16,6 +17,7 @@ const STATUS_LABEL: Record<string, string> = {
 const ALL_STATUSES = ["PENDING", "PREPARING", "READY", "SERVED", "CANCELLED"];
 
 const POLL_INTERVAL_MS = 5000;
+const REPEAT_BEEP_MS = 8000;
 
 function statusBadgeClass(status: string) {
   if (status === "PENDING") return "bg-amber-100 text-amber-700";
@@ -34,20 +36,71 @@ function statusAccentClass(status: string) {
 export default function LiveOrdersBoard({ initialTables }: { initialTables: LiveTable[] }) {
   const [tables, setTables] = useState<LiveTable[]>(initialTables);
   const [savingOrderId, setSavingOrderId] = useState<string | null>(null);
+  const [deletingOrderId, setDeletingOrderId] = useState<string | null>(null);
   const [tableFilter, setTableFilter] = useState<string>("ALL");
   const [statusFilter, setStatusFilter] = useState<string>("ALL");
+  const [soundEnabled, setSoundEnabled] = useState(false);
+  const audioCtxRef = useRef<AudioContext | null>(null);
+  const priorCallingIdsRef = useRef<Set<string>>(new Set());
+  const priorChangeCallingIdsRef = useRef<Set<string>>(new Set());
+
+  function playChime() {
+    const ctx = audioCtxRef.current;
+    if (!ctx) return;
+    playBellChime(ctx, 1);
+  }
+
+  function playChangeAlert() {
+    const ctx = audioCtxRef.current;
+    if (!ctx) return;
+    playChangeChime(ctx, 1);
+  }
+
+  function enableSound() {
+    const AudioCtx = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+    audioCtxRef.current = new AudioCtx();
+    setSoundEnabled(true);
+    playChime();
+  }
 
   // Keep in sync if the server re-renders this page with fresh data
   // (e.g. right after adding a new table).
   useEffect(() => {
     setTables(initialTables);
+    priorCallingIdsRef.current = new Set(
+      initialTables.filter((t) => t.session?.waiterCallRequestedAt).map((t) => t.id),
+    );
+    priorChangeCallingIdsRef.current = new Set(
+      initialTables.filter((t) => t.session?.changeCallRequestedAt).map((t) => t.id),
+    );
   }, [initialTables]);
 
   async function refreshTables() {
     const res = await fetch("/api/admin/tables/live");
-    if (res.ok) {
-      setTables(await res.json());
+    if (!res.ok) return;
+    const fresh: LiveTable[] = await res.json();
+
+    const currentCallingIds = new Set(
+      fresh.filter((t) => t.session?.waiterCallRequestedAt).map((t) => t.id),
+    );
+    const hasNewCall = [...currentCallingIds].some((id) => !priorCallingIdsRef.current.has(id));
+    if (hasNewCall && soundEnabled) {
+      playChime();
     }
+    priorCallingIdsRef.current = currentCallingIds;
+
+    const currentChangeCallingIds = new Set(
+      fresh.filter((t) => t.session?.changeCallRequestedAt).map((t) => t.id),
+    );
+    const hasNewChangeCall = [...currentChangeCallingIds].some(
+      (id) => !priorChangeCallingIdsRef.current.has(id),
+    );
+    if (hasNewChangeCall && soundEnabled) {
+      playChangeAlert();
+    }
+    priorChangeCallingIdsRef.current = currentChangeCallingIds;
+
+    setTables(fresh);
   }
 
   useEffect(() => {
@@ -59,7 +112,8 @@ export default function LiveOrdersBoard({ initialTables }: { initialTables: Live
       cancelled = true;
       clearInterval(interval);
     };
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [soundEnabled]);
 
   async function handleStatusChange(orderId: string, status: string) {
     setSavingOrderId(orderId);
@@ -83,12 +137,53 @@ export default function LiveOrdersBoard({ initialTables }: { initialTables: Live
     }
   }
 
+  async function handleAcknowledgeChangeCall(sessionId: string) {
+    const res = await fetch(`/api/admin/sessions/${sessionId}/change-call`, {
+      method: "DELETE",
+    });
+    if (res.ok) {
+      await refreshTables();
+    }
+  }
+
+  async function handleDeleteOrder(orderId: string, itemsSummary: string) {
+    if (!window.confirm(`Delete this order (${itemsSummary})? The customer will be told to reorder.`)) {
+      return;
+    }
+    const reason = window.prompt("Optional reason to show the customer (leave blank to skip):") ?? undefined;
+    setDeletingOrderId(orderId);
+    const res = await fetch(`/api/admin/orders/${orderId}`, {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ reason: reason || undefined }),
+    });
+    setDeletingOrderId(null);
+    if (res.ok) {
+      await refreshTables();
+    }
+  }
+
   const pendingCount = tables.reduce(
     (n, t) => n + (t.session?.orders.filter((o) => o.status === "PENDING").length ?? 0),
     0,
   );
 
   const waiterCallTables = tables.filter((t) => t.session?.waiterCallRequestedAt);
+  const changeCallTables = tables.filter((t) => t.session?.changeCallRequestedAt);
+
+  useEffect(() => {
+    if (!soundEnabled || waiterCallTables.length === 0) return;
+    const interval = setInterval(playChime, REPEAT_BEEP_MS);
+    return () => clearInterval(interval);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [soundEnabled, waiterCallTables.length]);
+
+  useEffect(() => {
+    if (!soundEnabled || changeCallTables.length === 0) return;
+    const interval = setInterval(playChangeAlert, REPEAT_BEEP_MS);
+    return () => clearInterval(interval);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [soundEnabled, changeCallTables.length]);
 
   const visibleTables = tables.filter(
     (t) => tableFilter === "ALL" || String(t.tableNumber) === tableFilter,
@@ -96,6 +191,15 @@ export default function LiveOrdersBoard({ initialTables }: { initialTables: Live
 
   return (
     <>
+      {!soundEnabled && (
+        <button
+          onClick={enableSound}
+          className="mb-4 flex w-full items-center justify-center gap-2 rounded-xl bg-amber-500 px-4 py-3 text-base font-semibold text-stone-900 shadow-md transition hover:bg-amber-400"
+        >
+          🔔 Tap to enable call alerts
+        </button>
+      )}
+
       {waiterCallTables.length > 0 && (
         <div className="mb-4 flex items-center gap-3 rounded-xl border border-red-300 bg-gradient-to-r from-red-50 to-rose-50 p-4 shadow-sm">
           <span className="relative flex h-3 w-3">
@@ -105,6 +209,19 @@ export default function LiveOrdersBoard({ initialTables }: { initialTables: Live
           <p className="text-sm font-semibold text-red-900">
             Table{waiterCallTables.length > 1 ? "s" : ""}{" "}
             {waiterCallTables.map((t) => t.tableNumber).join(", ")} calling for a waiter
+          </p>
+        </div>
+      )}
+
+      {changeCallTables.length > 0 && (
+        <div className="mb-4 flex items-center gap-3 rounded-xl border border-emerald-300 bg-gradient-to-r from-emerald-50 to-teal-50 p-4 shadow-sm">
+          <span className="relative flex h-3 w-3">
+            <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-500 opacity-75" />
+            <span className="relative inline-flex h-3 w-3 rounded-full bg-emerald-600" />
+          </span>
+          <p className="text-sm font-semibold text-emerald-900">
+            Table{changeCallTables.length > 1 ? "s" : ""}{" "}
+            {changeCallTables.map((t) => t.tableNumber).join(", ")} asking for change
           </p>
         </div>
       )}
@@ -163,6 +280,7 @@ export default function LiveOrdersBoard({ initialTables }: { initialTables: Live
             statusFilter === "ALL" ? allOrders : allOrders.filter((o) => o.status === statusFilter);
           const hasPending = allOrders.some((o) => o.status === "PENDING");
           const isCallingWaiter = Boolean(session?.waiterCallRequestedAt);
+          const isCallingChange = Boolean(session?.changeCallRequestedAt);
 
           // When filtering by status across all tables, hide tables with no
           // matches instead of showing empty cards. A specific table filter
@@ -177,18 +295,22 @@ export default function LiveOrdersBoard({ initialTables }: { initialTables: Live
               className={`overflow-hidden rounded-xl border bg-white shadow-sm transition-shadow hover:shadow-md ${
                 isCallingWaiter
                   ? "animate-pulse border-red-400 ring-2 ring-red-200"
-                  : hasPending
-                    ? "border-amber-300 ring-2 ring-amber-100"
-                    : "border-slate-200"
+                  : isCallingChange
+                    ? "animate-pulse border-emerald-400 ring-2 ring-emerald-200"
+                    : hasPending
+                      ? "border-amber-300 ring-2 ring-amber-100"
+                      : "border-slate-200"
               }`}
             >
               <div
                 className={`h-1.5 w-full ${
                   isCallingWaiter
                     ? "bg-gradient-to-r from-red-500 to-rose-500"
-                    : table.status === "OCCUPIED"
-                      ? "bg-gradient-to-r from-amber-400 to-orange-400"
-                      : "bg-gradient-to-r from-green-400 to-emerald-400"
+                    : isCallingChange
+                      ? "bg-gradient-to-r from-emerald-500 to-teal-500"
+                      : table.status === "OCCUPIED"
+                        ? "bg-gradient-to-r from-amber-400 to-orange-400"
+                        : "bg-gradient-to-r from-green-400 to-emerald-400"
                 }`}
               />
 
@@ -204,6 +326,24 @@ export default function LiveOrdersBoard({ initialTables }: { initialTables: Live
                   <button
                     onClick={() => handleAcknowledgeWaiterCall(session.id)}
                     className="rounded-md bg-red-600 px-2.5 py-1 text-xs font-semibold text-white shadow-sm transition hover:bg-red-700"
+                  >
+                    Acknowledge
+                  </button>
+                </div>
+              )}
+
+              {isCallingChange && session && (
+                <div className="flex items-center justify-between gap-2 bg-emerald-50 px-4 py-2">
+                  <span className="flex items-center gap-2 text-sm font-semibold text-emerald-700">
+                    <span className="relative flex h-2.5 w-2.5">
+                      <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-500 opacity-75" />
+                      <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-emerald-600" />
+                    </span>
+                    💵 Change requested
+                  </span>
+                  <button
+                    onClick={() => handleAcknowledgeChangeCall(session.id)}
+                    className="rounded-md bg-emerald-600 px-2.5 py-1 text-xs font-semibold text-white shadow-sm transition hover:bg-emerald-700"
                   >
                     Acknowledge
                   </button>
@@ -242,33 +382,46 @@ export default function LiveOrdersBoard({ initialTables }: { initialTables: Live
                             : "No orders match this filter."}
                         </p>
                       )}
-                      {filteredOrders.map((order) => (
-                        <div
-                          key={order.id}
-                          className={`rounded-lg border-l-4 bg-slate-50 p-2.5 ${statusAccentClass(order.status)}`}
-                        >
-                          <div className="flex items-center justify-between gap-2">
-                            <span className="text-xs text-slate-500">
-                              {formatISTTime(order.placedAt)}
-                            </span>
-                            <select
-                              value={order.status}
-                              disabled={savingOrderId === order.id}
-                              onChange={(e) => handleStatusChange(order.id, e.target.value)}
-                              className={`rounded-full border-none px-2 py-0.5 text-xs font-semibold ${statusBadgeClass(order.status)}`}
-                            >
-                              {ALL_STATUSES.map((s) => (
-                                <option key={s} value={s}>
-                                  {STATUS_LABEL[s]}
-                                </option>
-                              ))}
-                            </select>
+                      {filteredOrders.map((order) => {
+                        const itemsSummary = order.items
+                          .map((i) => `${i.quantity}x ${i.itemNameSnapshot}`)
+                          .join(", ");
+                        return (
+                          <div
+                            key={order.id}
+                            className={`rounded-lg border-l-4 bg-slate-50 p-2.5 ${statusAccentClass(order.status)}`}
+                          >
+                            <div className="flex items-center justify-between gap-2">
+                              <span className="text-xs text-slate-500">
+                                {formatISTTime(order.placedAt)}
+                              </span>
+                              <div className="flex items-center gap-1.5">
+                                <select
+                                  value={order.status}
+                                  disabled={savingOrderId === order.id}
+                                  onChange={(e) => handleStatusChange(order.id, e.target.value)}
+                                  className={`rounded-full border-none px-2 py-0.5 text-xs font-semibold ${statusBadgeClass(order.status)}`}
+                                >
+                                  {ALL_STATUSES.map((s) => (
+                                    <option key={s} value={s}>
+                                      {STATUS_LABEL[s]}
+                                    </option>
+                                  ))}
+                                </select>
+                                <button
+                                  onClick={() => handleDeleteOrder(order.id, itemsSummary)}
+                                  disabled={deletingOrderId === order.id}
+                                  title="Delete order (wrong order entered)"
+                                  className="rounded-full bg-red-50 px-2 py-0.5 text-xs font-semibold text-red-600 transition hover:bg-red-100 disabled:opacity-50"
+                                >
+                                  🗑️ Delete
+                                </button>
+                              </div>
+                            </div>
+                            <p className="mt-1.5 text-sm text-slate-700">{itemsSummary}</p>
                           </div>
-                          <p className="mt-1.5 text-sm text-slate-700">
-                            {order.items.map((i) => `${i.quantity}x ${i.itemNameSnapshot}`).join(", ")}
-                          </p>
-                        </div>
-                      ))}
+                        );
+                      })}
                     </div>
 
                     <div className="mt-3 flex items-center justify-between rounded-lg bg-slate-50 px-3 py-2">

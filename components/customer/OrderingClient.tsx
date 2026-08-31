@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { playBellChime } from "@/lib/bellSound";
+import { playBellChime, playBellStrike, playChangeChime } from "@/lib/bellSound";
 
 interface MenuItemView {
   id: string;
@@ -39,6 +39,8 @@ interface SessionSummary {
   discountPercent: number;
   grandTotal: number;
   orders: OrderView[];
+  reorderNoticeAt: string | null;
+  reorderNoticeMessage: string | null;
 }
 
 const POLL_INTERVAL_MS = 5000;
@@ -101,6 +103,10 @@ export default function OrderingClient({
   const [waiterCallState, setWaiterCallState] = useState<"idle" | "sending" | "sent">("idle");
   const [cooldownUntil, setCooldownUntil] = useState<number | null>(null);
   const [cooldownSecondsLeft, setCooldownSecondsLeft] = useState(0);
+  const [changeCallState, setChangeCallState] = useState<"idle" | "sending" | "sent">("idle");
+  const [changeCooldownUntil, setChangeCooldownUntil] = useState<number | null>(null);
+  const [changeCooldownSecondsLeft, setChangeCooldownSecondsLeft] = useState(0);
+  const [dismissedNoticeAt, setDismissedNoticeAt] = useState<string | null>(null);
   const [activeCategoryId, setActiveCategoryId] = useState(categories[0]?.id);
   const audioCtxRef = useRef<AudioContext | null>(null);
 
@@ -119,30 +125,72 @@ export default function OrderingClient({
     return () => clearInterval(interval);
   }, [cooldownUntil]);
 
-  async function callWaiter() {
-    setWaiterCallState("sending");
+  useEffect(() => {
+    if (!changeCooldownUntil) return;
+    const interval = setInterval(() => {
+      const secondsLeft = Math.max(0, Math.ceil((changeCooldownUntil - Date.now()) / 1000));
+      setChangeCooldownSecondsLeft(secondsLeft);
+      if (secondsLeft <= 0) {
+        setChangeCooldownUntil(null);
+        setChangeCallState("idle");
+      }
+    }, 500);
+    return () => clearInterval(interval);
+  }, [changeCooldownUntil]);
 
-    // Created inside this click handler so the browser counts it as triggered
+  function ensureAudioCtx() {
+    // Created inside a click handler so the browser counts it as triggered
     // by a user gesture — required before audio is allowed to play.
     if (!audioCtxRef.current) {
       const AudioCtx = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
       audioCtxRef.current = new AudioCtx();
     }
+    return audioCtxRef.current;
+  }
+
+  async function callWaiter() {
+    setWaiterCallState("sending");
+    const ctx = ensureAudioCtx();
 
     const res = await fetch(`/api/sessions/${sessionId}/waiter-call`, { method: "POST" });
     if (res.ok) {
       setWaiterCallState("sent");
       setCooldownUntil(Date.now() + 60_000);
-      playBellChime(audioCtxRef.current, 1);
+      playBellChime(ctx, 1);
     } else {
       setWaiterCallState("idle");
     }
   }
 
+  async function callChange() {
+    setChangeCallState("sending");
+    const ctx = ensureAudioCtx();
+
+    const res = await fetch(`/api/sessions/${sessionId}/change-call`, { method: "POST" });
+    if (res.ok) {
+      setChangeCallState("sent");
+      setChangeCooldownUntil(Date.now() + 60_000);
+      playChangeChime(ctx, 1);
+    } else {
+      setChangeCallState("idle");
+    }
+  }
+
+  const lastSeenNoticeAtRef = useRef<string | null>(null);
+
   async function loadSummary() {
     const res = await fetch(`/api/sessions/${sessionId}`);
     if (res.ok) {
-      setSummary(await res.json());
+      const data: SessionSummary = await res.json();
+      if (
+        data.reorderNoticeAt &&
+        data.reorderNoticeAt !== lastSeenNoticeAtRef.current &&
+        lastSeenNoticeAtRef.current !== null
+      ) {
+        playBellStrike(ensureAudioCtx(), 0.7);
+      }
+      lastSeenNoticeAtRef.current = data.reorderNoticeAt;
+      setSummary(data);
     }
   }
 
@@ -223,9 +271,23 @@ export default function OrderingClient({
   }
 
   const discountAmount = summary ? summary.subtotal * (summary.discountPercent / 100) : 0;
+  const showReorderNotice =
+    summary?.reorderNoticeAt && summary.reorderNoticeAt !== dismissedNoticeAt;
 
   return (
     <>
+      {showReorderNotice && (
+        <div className="fixed inset-x-0 top-0 z-40 flex items-center justify-between gap-3 bg-red-600 px-4 py-3 text-white shadow-lg">
+          <p className="text-sm font-medium">⚠️ {summary!.reorderNoticeMessage}</p>
+          <button
+            onClick={() => setDismissedNoticeAt(summary!.reorderNoticeAt)}
+            className="flex-shrink-0 rounded-full bg-white/20 px-3 py-1 text-xs font-semibold hover:bg-white/30"
+          >
+            Dismiss
+          </button>
+        </div>
+      )}
+
       <nav className="sticky top-0 z-20 flex h-14 items-center gap-2 overflow-x-auto border-b border-amber-200 bg-amber-50/95 px-4 backdrop-blur">
         {categories.map((category) => (
           <button
@@ -386,22 +448,41 @@ export default function OrderingClient({
         ))}
       </div>
 
-      <button
-        onClick={callWaiter}
-        disabled={waiterCallState !== "idle"}
-        className={`fixed right-4 z-30 flex items-center gap-1.5 rounded-full px-4 py-3 text-sm font-semibold shadow-xl transition-all disabled:cursor-not-allowed ${
+      <div
+        className={`fixed right-4 z-30 flex flex-col items-end gap-2 transition-all ${
           cartEntries.length > 0 ? "bottom-24" : "bottom-6"
-        } ${
-          waiterCallState === "sent"
-            ? "bg-green-600 text-white"
-            : "bg-stone-900 text-amber-400 hover:bg-stone-800"
         }`}
       >
-        {waiterCallState === "sending" && "Calling..."}
-        {waiterCallState === "sent" &&
-          `✓ Waiter notified${cooldownSecondsLeft > 0 ? ` (${cooldownSecondsLeft}s)` : ""}`}
-        {waiterCallState === "idle" && "🔔 Call Waiter"}
-      </button>
+        <button
+          onClick={callChange}
+          disabled={changeCallState !== "idle"}
+          className={`flex items-center gap-1.5 rounded-full px-4 py-3 text-sm font-semibold shadow-xl transition-all disabled:cursor-not-allowed ${
+            changeCallState === "sent"
+              ? "bg-green-600 text-white"
+              : "bg-white text-stone-900 hover:bg-stone-100"
+          }`}
+        >
+          {changeCallState === "sending" && "Calling..."}
+          {changeCallState === "sent" &&
+            `✓ Change requested${changeCooldownSecondsLeft > 0 ? ` (${changeCooldownSecondsLeft}s)` : ""}`}
+          {changeCallState === "idle" && "💵 Call Change"}
+        </button>
+
+        <button
+          onClick={callWaiter}
+          disabled={waiterCallState !== "idle"}
+          className={`flex items-center gap-1.5 rounded-full px-4 py-3 text-sm font-semibold shadow-xl transition-all disabled:cursor-not-allowed ${
+            waiterCallState === "sent"
+              ? "bg-green-600 text-white"
+              : "bg-stone-900 text-amber-400 hover:bg-stone-800"
+          }`}
+        >
+          {waiterCallState === "sending" && "Calling..."}
+          {waiterCallState === "sent" &&
+            `✓ Waiter notified${cooldownSecondsLeft > 0 ? ` (${cooldownSecondsLeft}s)` : ""}`}
+          {waiterCallState === "idle" && "🔔 Call Waiter"}
+        </button>
+      </div>
 
       {cartEntries.length > 0 && (
         <div className="fixed inset-x-0 bottom-0 border-t border-amber-300 bg-gradient-to-r from-amber-500 to-orange-500 p-4 shadow-2xl">

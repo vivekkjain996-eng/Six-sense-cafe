@@ -54,7 +54,7 @@ export default function PushNotificationSetup() {
       });
 
       const subJson = subscription.toJSON();
-      await fetch("/api/waiter/push-subscribe", {
+      await fetch("/api/push/subscribe", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ endpoint: subJson.endpoint, keys: subJson.keys }),

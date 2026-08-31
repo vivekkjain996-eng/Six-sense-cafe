@@ -13,25 +13,27 @@ if (vapidConfigured) {
   );
 }
 
-export async function notifyWaitersOfCall(restaurantId: string, tableNumber: number) {
+async function sendPushToStaff(
+  restaurantId: string,
+  payload: { title: string; body: string; url: string },
+) {
   if (!vapidConfigured) return;
 
+  // Any subscribed staff device — waiter, owner, or kitchen — gets the
+  // alert, not just waiters, so the admin dashboard can also ring in the
+  // background when its tab/app isn't open.
   const subscriptions = await db.pushSubscription.findMany({
-    where: { adminUser: { restaurantId, role: "WAITER" } },
+    where: { adminUser: { restaurantId } },
   });
 
-  const payload = JSON.stringify({
-    title: "🔔 Waiter called",
-    body: `Table ${tableNumber} needs a waiter`,
-    url: "/waiter",
-  });
+  const json = JSON.stringify(payload);
 
   await Promise.all(
     subscriptions.map(async (sub) => {
       try {
         await webpush.sendNotification(
           { endpoint: sub.endpoint, keys: { p256dh: sub.p256dh, auth: sub.auth } },
-          payload,
+          json,
         );
       } catch (err) {
         const statusCode = (err as { statusCode?: number }).statusCode;
@@ -42,6 +44,22 @@ export async function notifyWaitersOfCall(restaurantId: string, tableNumber: num
       }
     }),
   );
+}
+
+export async function notifyWaitersOfCall(restaurantId: string, tableNumber: number) {
+  await sendPushToStaff(restaurantId, {
+    title: "🔔 Waiter called",
+    body: `Table ${tableNumber} needs a waiter`,
+    url: "/waiter",
+  });
+}
+
+export async function notifyWaitersOfChangeCall(restaurantId: string, tableNumber: number) {
+  await sendPushToStaff(restaurantId, {
+    title: "💵 Change requested",
+    body: `Table ${tableNumber} is asking for change`,
+    url: "/waiter",
+  });
 }
 
 const REPEAT_NOTIFY_INTERVAL_MS = 20_000;
@@ -71,6 +89,28 @@ export async function maybeRepeatWaiterCallNotification(table: {
     .updateMany({
       where: { id: session.id, waiterCallRequestedAt: { not: null } },
       data: { waiterCallLastNotifiedAt: new Date() },
+    })
+    .catch(() => {});
+}
+
+export async function maybeRepeatChangeCallNotification(table: {
+  id: string;
+  tableNumber: number;
+  restaurantId: string;
+  session: { id: string; changeCallRequestedAt: Date | null; changeCallLastNotifiedAt: Date | null } | null;
+}) {
+  const session = table.session;
+  if (!session?.changeCallRequestedAt) return;
+
+  const lastNotified = session.changeCallLastNotifiedAt ?? session.changeCallRequestedAt;
+  if (Date.now() - lastNotified.getTime() < REPEAT_NOTIFY_INTERVAL_MS) return;
+
+  await notifyWaitersOfChangeCall(table.restaurantId, table.tableNumber);
+
+  await db.tableSession
+    .updateMany({
+      where: { id: session.id, changeCallRequestedAt: { not: null } },
+      data: { changeCallLastNotifiedAt: new Date() },
     })
     .catch(() => {});
 }

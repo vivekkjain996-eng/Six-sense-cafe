@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { LiveTable } from "@/lib/liveTables";
 import { formatISTTime } from "@/lib/time";
-import { playBellChime } from "@/lib/bellSound";
+import { playBellChime, playChangeChime } from "@/lib/bellSound";
 
 const POLL_INTERVAL_MS = 4000;
 const REPEAT_BEEP_MS = 8000;
@@ -29,14 +29,23 @@ export default function WaiterAlertBoard({ initialTables }: { initialTables: Liv
   const [tables, setTables] = useState<LiveTable[]>(initialTables);
   const [soundEnabled, setSoundEnabled] = useState(false);
   const [acknowledgingId, setAcknowledgingId] = useState<string | null>(null);
+  const [acknowledgingChangeId, setAcknowledgingChangeId] = useState<string | null>(null);
   const [savingOrderId, setSavingOrderId] = useState<string | null>(null);
+  const [deletingOrderId, setDeletingOrderId] = useState<string | null>(null);
   const audioCtxRef = useRef<AudioContext | null>(null);
   const priorCallingIdsRef = useRef<Set<string>>(new Set());
+  const priorChangeCallingIdsRef = useRef<Set<string>>(new Set());
 
   function playChime() {
     const ctx = audioCtxRef.current;
     if (!ctx) return;
     playBellChime(ctx, 1);
+  }
+
+  function playChangeAlert() {
+    const ctx = audioCtxRef.current;
+    if (!ctx) return;
+    playChangeChime(ctx, 1);
   }
 
   function enableSound() {
@@ -60,6 +69,17 @@ export default function WaiterAlertBoard({ initialTables }: { initialTables: Liv
     }
     priorCallingIdsRef.current = currentCallingIds;
 
+    const currentChangeCallingIds = new Set(
+      fresh.filter((t) => t.session?.changeCallRequestedAt).map((t) => t.id),
+    );
+    const hasNewChangeCall = [...currentChangeCallingIds].some(
+      (id) => !priorChangeCallingIdsRef.current.has(id),
+    );
+    if (hasNewChangeCall && soundEnabled) {
+      playChangeAlert();
+    }
+    priorChangeCallingIdsRef.current = currentChangeCallingIds;
+
     setTables(fresh);
   }
 
@@ -67,6 +87,9 @@ export default function WaiterAlertBoard({ initialTables }: { initialTables: Liv
     setTables(initialTables);
     priorCallingIdsRef.current = new Set(
       initialTables.filter((t) => t.session?.waiterCallRequestedAt).map((t) => t.id),
+    );
+    priorChangeCallingIdsRef.current = new Set(
+      initialTables.filter((t) => t.session?.changeCallRequestedAt).map((t) => t.id),
     );
   }, [initialTables]);
 
@@ -77,6 +100,7 @@ export default function WaiterAlertBoard({ initialTables }: { initialTables: Liv
   }, [soundEnabled]);
 
   const waiterCallTables = tables.filter((t) => t.session?.waiterCallRequestedAt);
+  const changeCallTables = tables.filter((t) => t.session?.changeCallRequestedAt);
 
   useEffect(() => {
     if (!soundEnabled || waiterCallTables.length === 0) return;
@@ -84,6 +108,13 @@ export default function WaiterAlertBoard({ initialTables }: { initialTables: Liv
     return () => clearInterval(interval);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [soundEnabled, waiterCallTables.length]);
+
+  useEffect(() => {
+    if (!soundEnabled || changeCallTables.length === 0) return;
+    const interval = setInterval(playChangeAlert, REPEAT_BEEP_MS);
+    return () => clearInterval(interval);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [soundEnabled, changeCallTables.length]);
 
   async function handleStatusChange(orderId: string, status: string) {
     setSavingOrderId(orderId);
@@ -102,6 +133,32 @@ export default function WaiterAlertBoard({ initialTables }: { initialTables: Liv
     setAcknowledgingId(sessionId);
     const res = await fetch(`/api/admin/sessions/${sessionId}/waiter-call`, { method: "DELETE" });
     setAcknowledgingId(null);
+    if (res.ok) {
+      await refreshTables();
+    }
+  }
+
+  async function handleAcknowledgeChange(sessionId: string) {
+    setAcknowledgingChangeId(sessionId);
+    const res = await fetch(`/api/admin/sessions/${sessionId}/change-call`, { method: "DELETE" });
+    setAcknowledgingChangeId(null);
+    if (res.ok) {
+      await refreshTables();
+    }
+  }
+
+  async function handleDeleteOrder(orderId: string, itemsSummary: string) {
+    if (!window.confirm(`Delete this order (${itemsSummary})? The customer will be told to reorder.`)) {
+      return;
+    }
+    const reason = window.prompt("Optional reason to show the customer (leave blank to skip):") ?? undefined;
+    setDeletingOrderId(orderId);
+    const res = await fetch(`/api/admin/orders/${orderId}`, {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ reason: reason || undefined }),
+    });
+    setDeletingOrderId(null);
     if (res.ok) {
       await refreshTables();
     }
@@ -131,12 +188,26 @@ export default function WaiterAlertBoard({ initialTables }: { initialTables: Liv
         </div>
       )}
 
+      {changeCallTables.length > 0 && (
+        <div className="mb-4 flex items-center gap-3 rounded-xl border border-emerald-300 bg-gradient-to-r from-emerald-50 to-teal-50 p-4 shadow-sm">
+          <span className="relative flex h-3 w-3">
+            <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-500 opacity-75" />
+            <span className="relative inline-flex h-3 w-3 rounded-full bg-emerald-600" />
+          </span>
+          <p className="text-sm font-semibold text-emerald-900">
+            Table{changeCallTables.length > 1 ? "s" : ""}{" "}
+            {changeCallTables.map((t) => t.tableNumber).join(", ")} asking for change
+          </p>
+        </div>
+      )}
+
       <div className="space-y-4">
         {tables.map((table) => {
           const session = table.session;
           const orders = session?.orders ?? [];
           const hasPending = orders.some((o) => o.status === "PENDING");
           const isCallingWaiter = Boolean(session?.waiterCallRequestedAt);
+          const isCallingChange = Boolean(session?.changeCallRequestedAt);
 
           return (
             <div
@@ -144,9 +215,11 @@ export default function WaiterAlertBoard({ initialTables }: { initialTables: Liv
               className={`overflow-hidden rounded-xl border bg-white shadow-sm ${
                 isCallingWaiter
                   ? "animate-pulse border-red-400 ring-2 ring-red-200"
-                  : hasPending
-                    ? "border-amber-300 ring-2 ring-amber-100"
-                    : "border-slate-200"
+                  : isCallingChange
+                    ? "animate-pulse border-emerald-400 ring-2 ring-emerald-200"
+                    : hasPending
+                      ? "border-amber-300 ring-2 ring-amber-100"
+                      : "border-slate-200"
               }`}
             >
               {isCallingWaiter && session && (
@@ -162,6 +235,25 @@ export default function WaiterAlertBoard({ initialTables }: { initialTables: Liv
                     onClick={() => handleAcknowledge(session.id)}
                     disabled={acknowledgingId === session.id}
                     className="rounded-md bg-red-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm transition hover:bg-red-700 disabled:opacity-50"
+                  >
+                    Acknowledge
+                  </button>
+                </div>
+              )}
+
+              {isCallingChange && session && (
+                <div className="flex items-center justify-between gap-2 bg-emerald-50 px-4 py-2.5">
+                  <span className="flex items-center gap-2 text-sm font-semibold text-emerald-700">
+                    <span className="relative flex h-2.5 w-2.5">
+                      <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-500 opacity-75" />
+                      <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-emerald-600" />
+                    </span>
+                    💵 Change requested
+                  </span>
+                  <button
+                    onClick={() => handleAcknowledgeChange(session.id)}
+                    disabled={acknowledgingChangeId === session.id}
+                    className="rounded-md bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm transition hover:bg-emerald-700 disabled:opacity-50"
                   >
                     Acknowledge
                   </button>
@@ -195,32 +287,52 @@ export default function WaiterAlertBoard({ initialTables }: { initialTables: Liv
                     {orders.length === 0 && (
                       <p className="text-sm text-gray-500">No orders placed yet.</p>
                     )}
-                    {orders.map((order) => (
-                      <div key={order.id} className="rounded-lg bg-slate-50 p-2.5">
-                        <div className="flex items-center justify-between gap-2">
-                          <span className="text-xs text-slate-500">{formatISTTime(order.placedAt)}</span>
-                          <select
-                            value={order.status}
-                            disabled={savingOrderId === order.id}
-                            onChange={(e) => handleStatusChange(order.id, e.target.value)}
-                            className={`rounded-full border-none px-2 py-0.5 text-xs font-semibold ${statusBadgeClass(order.status)}`}
-                          >
-                            {ALL_STATUSES.map((s) => (
-                              <option key={s} value={s}>
-                                {STATUS_LABEL[s]}
-                              </option>
-                            ))}
-                          </select>
+                    {orders.map((order) => {
+                      const itemsSummary = order.items
+                        .map((i) => `${i.quantity}x ${i.itemNameSnapshot}`)
+                        .join(", ");
+                      return (
+                        <div key={order.id} className="rounded-lg bg-slate-50 p-2.5">
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="text-xs text-slate-500">{formatISTTime(order.placedAt)}</span>
+                            <div className="flex items-center gap-1.5">
+                              <select
+                                value={order.status}
+                                disabled={savingOrderId === order.id}
+                                onChange={(e) => handleStatusChange(order.id, e.target.value)}
+                                className={`rounded-full border-none px-2 py-0.5 text-xs font-semibold ${statusBadgeClass(order.status)}`}
+                              >
+                                {ALL_STATUSES.map((s) => (
+                                  <option key={s} value={s}>
+                                    {STATUS_LABEL[s]}
+                                  </option>
+                                ))}
+                              </select>
+                              <button
+                                onClick={() => handleDeleteOrder(order.id, itemsSummary)}
+                                disabled={deletingOrderId === order.id}
+                                title="Delete order (wrong order entered)"
+                                className="rounded-full bg-red-50 px-2 py-0.5 text-xs font-semibold text-red-600 transition hover:bg-red-100 disabled:opacity-50"
+                              >
+                                🗑️ Delete
+                              </button>
+                            </div>
+                          </div>
+                          <p className="mt-1.5 text-sm text-slate-700">{itemsSummary}</p>
                         </div>
-                        <p className="mt-1.5 text-sm text-slate-700">
-                          {order.items.map((i) => `${i.quantity}x ${i.itemNameSnapshot}`).join(", ")}
-                        </p>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 ) : (
                   <p className="mt-3 text-sm text-gray-500">No active bill</p>
                 )}
+
+                <a
+                  href={`/api/admin/tables/${table.id}/qrcode`}
+                  className="mt-3 inline-block text-sm font-medium text-slate-500 underline hover:text-slate-700"
+                >
+                  Download QR code
+                </a>
               </div>
             </div>
           );

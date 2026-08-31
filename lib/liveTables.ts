@@ -1,5 +1,5 @@
 import { db } from "@/lib/db";
-import { maybeRepeatWaiterCallNotification } from "@/lib/push";
+import { maybeRepeatWaiterCallNotification, maybeRepeatChangeCallNotification } from "@/lib/push";
 
 export async function getLiveTables(restaurantId: string) {
   const tables = await db.restaurantTable.findMany({
@@ -34,6 +34,19 @@ export async function getLiveTables(restaurantId: string) {
       }).catch(() => {});
     }
 
+    if (openSession?.changeCallRequestedAt) {
+      maybeRepeatChangeCallNotification({
+        id: table.id,
+        tableNumber: table.tableNumber,
+        restaurantId,
+        session: {
+          id: openSession.id,
+          changeCallRequestedAt: openSession.changeCallRequestedAt,
+          changeCallLastNotifiedAt: openSession.changeCallLastNotifiedAt,
+        },
+      }).catch(() => {});
+    }
+
     return {
       id: table.id,
       tableNumber: table.tableNumber,
@@ -44,6 +57,7 @@ export async function getLiveTables(restaurantId: string) {
             grandTotal: openSession.grandTotal,
             paymentStatus: openSession.paymentStatus,
             waiterCallRequestedAt: openSession.waiterCallRequestedAt?.toISOString() ?? null,
+            changeCallRequestedAt: openSession.changeCallRequestedAt?.toISOString() ?? null,
             orders: openSession.orders.map((order) => ({
               id: order.id,
               status: order.status,

@@ -116,6 +116,10 @@ model TableSession {
   closedAt      DateTime?
   waiterCallRequestedAt DateTime?
   waiterCallLastNotifiedAt DateTime?
+  changeCallRequestedAt DateTime?
+  changeCallLastNotifiedAt DateTime?
+  reorderNoticeAt      DateTime?
+  reorderNoticeMessage String?
 
   orders Order[]
 }

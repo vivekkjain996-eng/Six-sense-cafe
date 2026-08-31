@@ -4,7 +4,7 @@ import { getLiveTables } from "@/lib/liveTables";
 import { db } from "@/lib/db";
 import WaiterHeader from "@/components/waiter/WaiterHeader";
 import WaiterAlertBoard from "@/components/waiter/WaiterAlertBoard";
-import PushNotificationSetup from "@/components/waiter/PushNotificationSetup";
+import PushNotificationSetup from "@/components/shared/PushNotificationSetup";
 
 export default async function WaiterPage() {
   const session = await getAdminSession();

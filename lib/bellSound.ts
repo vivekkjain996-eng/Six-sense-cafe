@@ -55,3 +55,55 @@ export function playBellChime(ctx: AudioContext, volume = 1) {
     }, delay);
   });
 }
+
+// A lower, two-tone "ding-dong" — square waves instead of triangle give it a
+// hollower, more electronic timbre, and the falling second note (vs. the
+// bell's three identical strikes) makes it easy to tell apart from a waiter
+// call by ear alone.
+export function playChangeStrike(ctx: AudioContext, volume = 1) {
+  const now = ctx.currentTime;
+  const duration = 0.9;
+
+  const compressor = ctx.createDynamicsCompressor();
+  compressor.threshold.setValueAtTime(-30, now);
+  compressor.knee.setValueAtTime(10, now);
+  compressor.ratio.setValueAtTime(14, now);
+  compressor.attack.setValueAtTime(0.002, now);
+  compressor.release.setValueAtTime(0.3, now);
+
+  const makeupGain = ctx.createGain();
+  makeupGain.gain.value = 1.6;
+  compressor.connect(makeupGain);
+  makeupGain.connect(ctx.destination);
+
+  const notes: [frequency: number, startOffset: number, relativeVolume: number][] = [
+    [587, 0, 1.6],
+    [440, 0.16, 1.6],
+  ];
+
+  for (const [frequency, startOffset, relativeVolume] of notes) {
+    const start = now + startOffset;
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = "square";
+    osc.frequency.value = frequency;
+    gain.gain.setValueAtTime(0.0001, start);
+    gain.gain.exponentialRampToValueAtTime(Math.max(0.0002, volume * relativeVolume * 0.4), start + 0.01);
+    gain.gain.exponentialRampToValueAtTime(0.0001, start + duration - startOffset);
+    osc.connect(gain);
+    gain.connect(compressor);
+    osc.start(start);
+    osc.stop(start + duration - startOffset);
+  }
+}
+
+// A single ding-dong repeated twice, spaced further apart than the bell
+// chime's three quick strikes, so the overall rhythm doesn't get confused
+// with a waiter call even at a glance-free, sound-only hearing.
+export function playChangeChime(ctx: AudioContext, volume = 1) {
+  [0, 650].forEach((delay) => {
+    setTimeout(() => {
+      if (ctx.state !== "closed") playChangeStrike(ctx, volume);
+    }, delay);
+  });
+}
