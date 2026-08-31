@@ -459,13 +459,13 @@ export default function OrderingClient({
           className={`flex items-center gap-1.5 rounded-full px-4 py-3 text-sm font-semibold shadow-xl transition-all disabled:cursor-not-allowed ${
             changeCallState === "sent"
               ? "bg-green-600 text-white"
-              : "bg-white text-stone-900 hover:bg-stone-100"
+              : "bg-stone-900 text-amber-400 hover:bg-stone-800"
           }`}
         >
           {changeCallState === "sending" && "Calling..."}
           {changeCallState === "sent" &&
             `✓ Change requested${changeCooldownSecondsLeft > 0 ? ` (${changeCooldownSecondsLeft}s)` : ""}`}
-          {changeCallState === "idle" && "💵 Call Change"}
+          {changeCallState === "idle" && "🔔 Coal Change"}
         </button>
 
         <button

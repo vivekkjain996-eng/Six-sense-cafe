@@ -56,7 +56,7 @@ export async function notifyWaitersOfCall(restaurantId: string, tableNumber: num
 
 export async function notifyWaitersOfChangeCall(restaurantId: string, tableNumber: number) {
   await sendPushToStaff(restaurantId, {
-    title: "💵 Change requested",
+    title: "🔔 Change requested",
     body: `Table ${tableNumber} is asking for change`,
     url: "/waiter",
   });

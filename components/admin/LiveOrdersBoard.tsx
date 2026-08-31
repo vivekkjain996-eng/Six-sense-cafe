@@ -37,6 +37,7 @@ export default function LiveOrdersBoard({ initialTables }: { initialTables: Live
   const [tables, setTables] = useState<LiveTable[]>(initialTables);
   const [savingOrderId, setSavingOrderId] = useState<string | null>(null);
   const [deletingOrderId, setDeletingOrderId] = useState<string | null>(null);
+  const [deletingItemId, setDeletingItemId] = useState<string | null>(null);
   const [tableFilter, setTableFilter] = useState<string>("ALL");
   const [statusFilter, setStatusFilter] = useState<string>("ALL");
   const [soundEnabled, setSoundEnabled] = useState(false);
@@ -163,6 +164,23 @@ export default function LiveOrdersBoard({ initialTables }: { initialTables: Live
     }
   }
 
+  async function handleDeleteItem(itemId: string, itemSummary: string) {
+    if (!window.confirm(`Delete "${itemSummary}"? The customer will be told to reorder it.`)) {
+      return;
+    }
+    const reason = window.prompt("Optional reason to show the customer (leave blank to skip):") ?? undefined;
+    setDeletingItemId(itemId);
+    const res = await fetch(`/api/admin/order-items/${itemId}`, {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ reason: reason || undefined }),
+    });
+    setDeletingItemId(null);
+    if (res.ok) {
+      await refreshTables();
+    }
+  }
+
   const pendingCount = tables.reduce(
     (n, t) => n + (t.session?.orders.filter((o) => o.status === "PENDING").length ?? 0),
     0,
@@ -214,12 +232,12 @@ export default function LiveOrdersBoard({ initialTables }: { initialTables: Live
       )}
 
       {changeCallTables.length > 0 && (
-        <div className="mb-4 flex items-center gap-3 rounded-xl border border-emerald-300 bg-gradient-to-r from-emerald-50 to-teal-50 p-4 shadow-sm">
+        <div className="mb-4 flex items-center gap-3 rounded-xl border border-slate-700 bg-black p-4 shadow-sm">
           <span className="relative flex h-3 w-3">
-            <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-500 opacity-75" />
-            <span className="relative inline-flex h-3 w-3 rounded-full bg-emerald-600" />
+            <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-slate-400 opacity-75" />
+            <span className="relative inline-flex h-3 w-3 rounded-full bg-white" />
           </span>
-          <p className="text-sm font-semibold text-emerald-900">
+          <p className="text-sm font-semibold text-white">
             Table{changeCallTables.length > 1 ? "s" : ""}{" "}
             {changeCallTables.map((t) => t.tableNumber).join(", ")} asking for change
           </p>
@@ -296,7 +314,7 @@ export default function LiveOrdersBoard({ initialTables }: { initialTables: Live
                 isCallingWaiter
                   ? "animate-pulse border-red-400 ring-2 ring-red-200"
                   : isCallingChange
-                    ? "animate-pulse border-emerald-400 ring-2 ring-emerald-200"
+                    ? "animate-pulse border-slate-900 ring-2 ring-slate-300"
                     : hasPending
                       ? "border-amber-300 ring-2 ring-amber-100"
                       : "border-slate-200"
@@ -307,7 +325,7 @@ export default function LiveOrdersBoard({ initialTables }: { initialTables: Live
                   isCallingWaiter
                     ? "bg-gradient-to-r from-red-500 to-rose-500"
                     : isCallingChange
-                      ? "bg-gradient-to-r from-emerald-500 to-teal-500"
+                      ? "bg-gradient-to-r from-slate-800 to-black"
                       : table.status === "OCCUPIED"
                         ? "bg-gradient-to-r from-amber-400 to-orange-400"
                         : "bg-gradient-to-r from-green-400 to-emerald-400"
@@ -333,17 +351,17 @@ export default function LiveOrdersBoard({ initialTables }: { initialTables: Live
               )}
 
               {isCallingChange && session && (
-                <div className="flex items-center justify-between gap-2 bg-emerald-50 px-4 py-2">
-                  <span className="flex items-center gap-2 text-sm font-semibold text-emerald-700">
+                <div className="flex items-center justify-between gap-2 bg-black px-4 py-2">
+                  <span className="flex items-center gap-2 text-sm font-semibold text-white">
                     <span className="relative flex h-2.5 w-2.5">
-                      <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-500 opacity-75" />
-                      <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-emerald-600" />
+                      <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-slate-400 opacity-75" />
+                      <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-white" />
                     </span>
-                    💵 Change requested
+                    🔔 Change requested
                   </span>
                   <button
                     onClick={() => handleAcknowledgeChangeCall(session.id)}
-                    className="rounded-md bg-emerald-600 px-2.5 py-1 text-xs font-semibold text-white shadow-sm transition hover:bg-emerald-700"
+                    className="rounded-md bg-white px-2.5 py-1 text-xs font-semibold text-black shadow-sm transition hover:bg-slate-200"
                   >
                     Acknowledge
                   </button>
@@ -411,14 +429,31 @@ export default function LiveOrdersBoard({ initialTables }: { initialTables: Live
                                 <button
                                   onClick={() => handleDeleteOrder(order.id, itemsSummary)}
                                   disabled={deletingOrderId === order.id}
-                                  title="Delete order (wrong order entered)"
+                                  title="Delete the whole order"
                                   className="rounded-full bg-red-50 px-2 py-0.5 text-xs font-semibold text-red-600 transition hover:bg-red-100 disabled:opacity-50"
                                 >
-                                  🗑️ Delete
+                                  🗑️ Delete all
                                 </button>
                               </div>
                             </div>
-                            <p className="mt-1.5 text-sm text-slate-700">{itemsSummary}</p>
+                            <ul className="mt-1.5 space-y-1">
+                              {order.items.map((item) => {
+                                const itemSummary = `${item.quantity}x ${item.itemNameSnapshot}`;
+                                return (
+                                  <li key={item.id} className="flex items-center justify-between gap-2">
+                                    <span className="text-sm text-slate-700">{itemSummary}</span>
+                                    <button
+                                      onClick={() => handleDeleteItem(item.id, itemSummary)}
+                                      disabled={deletingItemId === item.id}
+                                      title="Delete just this item"
+                                      className="flex-shrink-0 rounded-full px-1.5 py-0.5 text-xs text-red-500 transition hover:bg-red-100 disabled:opacity-50"
+                                    >
+                                      ✕
+                                    </button>
+                                  </li>
+                                );
+                              })}
+                            </ul>
                           </div>
                         );
                       })}
