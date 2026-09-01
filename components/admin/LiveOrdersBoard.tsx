@@ -5,6 +5,11 @@ import Link from "next/link";
 import type { LiveTable } from "@/lib/liveTables";
 import { formatISTTime } from "@/lib/time";
 import { playBellChime, playChangeChime } from "@/lib/bellSound";
+import {
+  forgetSoundAlertsEnabled,
+  hasSoundAlertsEnabled,
+  rememberSoundAlertsEnabled,
+} from "@/lib/soundAlertPreference";
 
 const STATUS_LABEL: Record<string, string> = {
   PENDING: "Order received",
@@ -36,7 +41,6 @@ function statusAccentClass(status: string) {
 export default function LiveOrdersBoard({ initialTables }: { initialTables: LiveTable[] }) {
   const [tables, setTables] = useState<LiveTable[]>(initialTables);
   const [savingOrderId, setSavingOrderId] = useState<string | null>(null);
-  const [deletingOrderId, setDeletingOrderId] = useState<string | null>(null);
   const [deletingItemId, setDeletingItemId] = useState<string | null>(null);
   const [tableFilter, setTableFilter] = useState<string>("ALL");
   const [statusFilter, setStatusFilter] = useState<string>("ALL");
@@ -61,8 +65,27 @@ export default function LiveOrdersBoard({ initialTables }: { initialTables: Live
     const AudioCtx = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
     audioCtxRef.current = new AudioCtx();
     setSoundEnabled(true);
+    rememberSoundAlertsEnabled();
     playChime();
   }
+
+  function disableSound() {
+    audioCtxRef.current?.close().catch(() => {});
+    audioCtxRef.current = null;
+    setSoundEnabled(false);
+    forgetSoundAlertsEnabled();
+  }
+
+  // Re-enable silently (no chime, no button) if this device already opted
+  // in on a previous visit.
+  useEffect(() => {
+    if (!hasSoundAlertsEnabled() || audioCtxRef.current) return;
+    const AudioCtx = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+    const ctx = new AudioCtx();
+    audioCtxRef.current = ctx;
+    ctx.resume().catch(() => {});
+    setSoundEnabled(true);
+  }, []);
 
   // Keep in sync if the server re-renders this page with fresh data
   // (e.g. right after adding a new table).
@@ -147,23 +170,6 @@ export default function LiveOrdersBoard({ initialTables }: { initialTables: Live
     }
   }
 
-  async function handleDeleteOrder(orderId: string, itemsSummary: string) {
-    if (!window.confirm(`Delete this order (${itemsSummary})? The customer will be told to reorder.`)) {
-      return;
-    }
-    const reason = window.prompt("Optional reason to show the customer (leave blank to skip):") ?? undefined;
-    setDeletingOrderId(orderId);
-    const res = await fetch(`/api/admin/orders/${orderId}`, {
-      method: "DELETE",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ reason: reason || undefined }),
-    });
-    setDeletingOrderId(null);
-    if (res.ok) {
-      await refreshTables();
-    }
-  }
-
   async function handleDeleteItem(itemId: string, itemSummary: string) {
     if (!window.confirm(`Delete "${itemSummary}"? The customer will be told to reorder it.`)) {
       return;
@@ -209,7 +215,14 @@ export default function LiveOrdersBoard({ initialTables }: { initialTables: Live
 
   return (
     <>
-      {!soundEnabled && (
+      {soundEnabled ? (
+        <button
+          onClick={disableSound}
+          className="mb-4 flex w-full items-center justify-center gap-2 rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm font-medium text-slate-600 shadow-sm transition hover:bg-slate-50"
+        >
+          🔔 Alerts on — tap to mute
+        </button>
+      ) : (
         <button
           onClick={enableSound}
           className="mb-4 flex w-full items-center justify-center gap-2 rounded-xl bg-amber-500 px-4 py-3 text-base font-semibold text-stone-900 shadow-md transition hover:bg-amber-400"
@@ -401,9 +414,6 @@ export default function LiveOrdersBoard({ initialTables }: { initialTables: Live
                         </p>
                       )}
                       {filteredOrders.map((order) => {
-                        const itemsSummary = order.items
-                          .map((i) => `${i.quantity}x ${i.itemNameSnapshot}`)
-                          .join(", ");
                         return (
                           <div
                             key={order.id}
@@ -413,28 +423,18 @@ export default function LiveOrdersBoard({ initialTables }: { initialTables: Live
                               <span className="text-xs text-slate-500">
                                 {formatISTTime(order.placedAt)}
                               </span>
-                              <div className="flex items-center gap-1.5">
-                                <select
-                                  value={order.status}
-                                  disabled={savingOrderId === order.id}
-                                  onChange={(e) => handleStatusChange(order.id, e.target.value)}
-                                  className={`rounded-full border-none px-2 py-0.5 text-xs font-semibold ${statusBadgeClass(order.status)}`}
-                                >
-                                  {ALL_STATUSES.map((s) => (
-                                    <option key={s} value={s}>
-                                      {STATUS_LABEL[s]}
-                                    </option>
-                                  ))}
-                                </select>
-                                <button
-                                  onClick={() => handleDeleteOrder(order.id, itemsSummary)}
-                                  disabled={deletingOrderId === order.id}
-                                  title="Delete the whole order"
-                                  className="rounded-full bg-red-50 px-2 py-0.5 text-xs font-semibold text-red-600 transition hover:bg-red-100 disabled:opacity-50"
-                                >
-                                  🗑️ Delete all
-                                </button>
-                              </div>
+                              <select
+                                value={order.status}
+                                disabled={savingOrderId === order.id}
+                                onChange={(e) => handleStatusChange(order.id, e.target.value)}
+                                className={`rounded-full border-none px-2 py-0.5 text-xs font-semibold ${statusBadgeClass(order.status)}`}
+                              >
+                                {ALL_STATUSES.map((s) => (
+                                  <option key={s} value={s}>
+                                    {STATUS_LABEL[s]}
+                                  </option>
+                                ))}
+                              </select>
                             </div>
                             <ul className="mt-1.5 space-y-1">
                               {order.items.map((item) => {

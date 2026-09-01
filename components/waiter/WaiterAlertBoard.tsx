@@ -4,6 +4,11 @@ import { useEffect, useRef, useState } from "react";
 import type { LiveTable } from "@/lib/liveTables";
 import { formatISTTime } from "@/lib/time";
 import { playBellChime, playChangeChime } from "@/lib/bellSound";
+import {
+  forgetSoundAlertsEnabled,
+  hasSoundAlertsEnabled,
+  rememberSoundAlertsEnabled,
+} from "@/lib/soundAlertPreference";
 
 const POLL_INTERVAL_MS = 4000;
 const REPEAT_BEEP_MS = 8000;
@@ -31,7 +36,6 @@ export default function WaiterAlertBoard({ initialTables }: { initialTables: Liv
   const [acknowledgingId, setAcknowledgingId] = useState<string | null>(null);
   const [acknowledgingChangeId, setAcknowledgingChangeId] = useState<string | null>(null);
   const [savingOrderId, setSavingOrderId] = useState<string | null>(null);
-  const [deletingOrderId, setDeletingOrderId] = useState<string | null>(null);
   const [deletingItemId, setDeletingItemId] = useState<string | null>(null);
   const audioCtxRef = useRef<AudioContext | null>(null);
   const priorCallingIdsRef = useRef<Set<string>>(new Set());
@@ -53,8 +57,27 @@ export default function WaiterAlertBoard({ initialTables }: { initialTables: Liv
     const AudioCtx = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
     audioCtxRef.current = new AudioCtx();
     setSoundEnabled(true);
+    rememberSoundAlertsEnabled();
     playChime();
   }
+
+  function disableSound() {
+    audioCtxRef.current?.close().catch(() => {});
+    audioCtxRef.current = null;
+    setSoundEnabled(false);
+    forgetSoundAlertsEnabled();
+  }
+
+  // Re-enable silently (no chime, no button) if this device already opted
+  // in on a previous visit.
+  useEffect(() => {
+    if (!hasSoundAlertsEnabled() || audioCtxRef.current) return;
+    const AudioCtx = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+    const ctx = new AudioCtx();
+    audioCtxRef.current = ctx;
+    ctx.resume().catch(() => {});
+    setSoundEnabled(true);
+  }, []);
 
   async function refreshTables() {
     const res = await fetch("/api/admin/tables/live");
@@ -148,23 +171,6 @@ export default function WaiterAlertBoard({ initialTables }: { initialTables: Liv
     }
   }
 
-  async function handleDeleteOrder(orderId: string, itemsSummary: string) {
-    if (!window.confirm(`Delete this order (${itemsSummary})? The customer will be told to reorder.`)) {
-      return;
-    }
-    const reason = window.prompt("Optional reason to show the customer (leave blank to skip):") ?? undefined;
-    setDeletingOrderId(orderId);
-    const res = await fetch(`/api/admin/orders/${orderId}`, {
-      method: "DELETE",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ reason: reason || undefined }),
-    });
-    setDeletingOrderId(null);
-    if (res.ok) {
-      await refreshTables();
-    }
-  }
-
   async function handleDeleteItem(itemId: string, itemSummary: string) {
     if (!window.confirm(`Delete "${itemSummary}"? The customer will be told to reorder it.`)) {
       return;
@@ -184,7 +190,14 @@ export default function WaiterAlertBoard({ initialTables }: { initialTables: Liv
 
   return (
     <>
-      {!soundEnabled && (
+      {soundEnabled ? (
+        <button
+          onClick={disableSound}
+          className="mb-4 flex w-full items-center justify-center gap-2 rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm font-medium text-slate-600 shadow-sm transition hover:bg-slate-50"
+        >
+          🔔 Alerts on — tap to mute
+        </button>
+      ) : (
         <button
           onClick={enableSound}
           className="mb-4 flex w-full items-center justify-center gap-2 rounded-xl bg-amber-500 px-4 py-3 text-base font-semibold text-stone-900 shadow-md transition hover:bg-amber-400"
@@ -306,35 +319,22 @@ export default function WaiterAlertBoard({ initialTables }: { initialTables: Liv
                       <p className="text-sm text-gray-500">No orders placed yet.</p>
                     )}
                     {orders.map((order) => {
-                      const itemsSummary = order.items
-                        .map((i) => `${i.quantity}x ${i.itemNameSnapshot}`)
-                        .join(", ");
                       return (
                         <div key={order.id} className="rounded-lg bg-slate-50 p-2.5">
                           <div className="flex items-center justify-between gap-2">
                             <span className="text-xs text-slate-500">{formatISTTime(order.placedAt)}</span>
-                            <div className="flex items-center gap-1.5">
-                              <select
-                                value={order.status}
-                                disabled={savingOrderId === order.id}
-                                onChange={(e) => handleStatusChange(order.id, e.target.value)}
-                                className={`rounded-full border-none px-2 py-0.5 text-xs font-semibold ${statusBadgeClass(order.status)}`}
-                              >
-                                {ALL_STATUSES.map((s) => (
-                                  <option key={s} value={s}>
-                                    {STATUS_LABEL[s]}
-                                  </option>
-                                ))}
-                              </select>
-                              <button
-                                onClick={() => handleDeleteOrder(order.id, itemsSummary)}
-                                disabled={deletingOrderId === order.id}
-                                title="Delete the whole order"
-                                className="rounded-full bg-red-50 px-2 py-0.5 text-xs font-semibold text-red-600 transition hover:bg-red-100 disabled:opacity-50"
-                              >
-                                🗑️ Delete all
-                              </button>
-                            </div>
+                            <select
+                              value={order.status}
+                              disabled={savingOrderId === order.id}
+                              onChange={(e) => handleStatusChange(order.id, e.target.value)}
+                              className={`rounded-full border-none px-2 py-0.5 text-xs font-semibold ${statusBadgeClass(order.status)}`}
+                            >
+                              {ALL_STATUSES.map((s) => (
+                                <option key={s} value={s}>
+                                  {STATUS_LABEL[s]}
+                                </option>
+                              ))}
+                            </select>
                           </div>
                           <ul className="mt-1.5 space-y-1">
                             {order.items.map((item) => {

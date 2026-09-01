@@ -305,10 +305,13 @@ export default function OrderingClient({
       </nav>
 
       {summary && summary.orders.length > 0 && (
-        <div className="sticky top-14 z-10 mx-4 mt-3 rounded-xl bg-stone-900 px-4 py-2.5 shadow-md">
+        <button
+          onClick={() => document.getElementById("your-bill")?.scrollIntoView({ behavior: "smooth", block: "start" })}
+          className="sticky top-14 z-10 mx-4 mt-3 block w-[calc(100%-2rem)] rounded-xl bg-stone-900 px-4 py-2.5 text-left shadow-md transition hover:bg-stone-800"
+        >
           <div className="flex items-center justify-between">
             <span className="text-sm text-amber-100">
-              {summary.orders.length} order{summary.orders.length > 1 ? "s" : ""} on this bill
+              {summary.orders.length} order{summary.orders.length > 1 ? "s" : ""} on this bill — tap to view
             </span>
             <span className="text-lg font-bold text-amber-400">₹{summary.grandTotal.toFixed(2)}</span>
           </div>
@@ -317,12 +320,12 @@ export default function OrderingClient({
               {summary.discountPercent}% discount applied — you saved ₹{discountAmount.toFixed(2)}
             </p>
           )}
-        </div>
+        </button>
       )}
 
       <div className="mx-auto max-w-xl space-y-8 p-4">
         {summary && summary.orders.length > 0 && (
-          <section>
+          <section id="your-bill" className="scroll-mt-32">
             <div className="mb-3 flex items-center gap-2">
               <span className="h-5 w-1.5 rounded-full bg-amber-400" />
               <h2 className="text-lg font-bold text-stone-800">Your Bill</h2>
