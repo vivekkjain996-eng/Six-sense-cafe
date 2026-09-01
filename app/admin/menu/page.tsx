@@ -3,6 +3,7 @@ import { getAdminSession } from "@/lib/auth";
 import { db } from "@/lib/db";
 import AdminHeader from "@/components/admin/AdminHeader";
 import MenuManagementBoard from "@/components/admin/MenuManagementBoard";
+import CallAlertListener from "@/components/shared/CallAlertListener";
 
 export default async function AdminMenuPage() {
   const session = await getAdminSession();
@@ -40,6 +41,7 @@ export default async function AdminMenuPage() {
       <AdminHeader restaurantName={restaurant?.name ?? "Restaurant"} active="menu" role={session!.role} />
 
       <main className="mx-auto max-w-6xl p-6">
+        <CallAlertListener />
         <div className="mb-6">
           <h1 className="text-2xl font-semibold text-slate-900">Menu Management</h1>
           <p className="mt-1 text-sm text-gray-600">

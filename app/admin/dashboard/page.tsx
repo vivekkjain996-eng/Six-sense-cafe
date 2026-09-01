@@ -6,6 +6,7 @@ import AdminHeader from "@/components/admin/AdminHeader";
 import CreateTableForm from "@/components/admin/CreateTableForm";
 import LiveOrdersBoard from "@/components/admin/LiveOrdersBoard";
 import PushNotificationSetup from "@/components/shared/PushNotificationSetup";
+import CallAlertListener from "@/components/shared/CallAlertListener";
 
 export default async function AdminDashboardPage() {
   const session = await getAdminSession();
@@ -37,6 +38,7 @@ export default async function AdminDashboardPage() {
         <CreateTableForm />
 
         <PushNotificationSetup />
+        <CallAlertListener />
         <LiveOrdersBoard initialTables={tables} />
       </main>
     </div>

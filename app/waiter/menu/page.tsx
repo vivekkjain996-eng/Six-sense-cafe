@@ -3,6 +3,7 @@ import { getAdminSession } from "@/lib/auth";
 import { db } from "@/lib/db";
 import WaiterHeader from "@/components/waiter/WaiterHeader";
 import WaiterMenuBoard from "@/components/waiter/WaiterMenuBoard";
+import CallAlertListener from "@/components/shared/CallAlertListener";
 
 export default async function WaiterMenuPage() {
   const session = await getAdminSession();
@@ -29,6 +30,7 @@ export default async function WaiterMenuPage() {
       <WaiterHeader restaurantName={restaurant?.name ?? "Restaurant"} active="menu" />
 
       <main className="mx-auto max-w-3xl p-4">
+        <CallAlertListener />
         <p className="mb-4 text-sm text-gray-600">
           Mark an item unavailable the moment you run out — customers stop seeing it as
           orderable right away.

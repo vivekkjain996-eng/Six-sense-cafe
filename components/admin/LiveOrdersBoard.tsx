@@ -1,15 +1,9 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import type { LiveTable } from "@/lib/liveTables";
 import { formatISTTime } from "@/lib/time";
-import { playBellChime, playChangeChime } from "@/lib/bellSound";
-import {
-  forgetSoundAlertsEnabled,
-  hasSoundAlertsEnabled,
-  rememberSoundAlertsEnabled,
-} from "@/lib/soundAlertPreference";
 
 const STATUS_LABEL: Record<string, string> = {
   PENDING: "Order received",
@@ -22,7 +16,6 @@ const STATUS_LABEL: Record<string, string> = {
 const ALL_STATUSES = ["PENDING", "PREPARING", "READY", "SERVED", "CANCELLED"];
 
 const POLL_INTERVAL_MS = 5000;
-const REPEAT_BEEP_MS = 8000;
 
 function statusBadgeClass(status: string) {
   if (status === "PENDING") return "bg-amber-100 text-amber-700";
@@ -44,87 +37,17 @@ export default function LiveOrdersBoard({ initialTables }: { initialTables: Live
   const [deletingItemId, setDeletingItemId] = useState<string | null>(null);
   const [tableFilter, setTableFilter] = useState<string>("ALL");
   const [statusFilter, setStatusFilter] = useState<string>("ALL");
-  const [soundEnabled, setSoundEnabled] = useState(false);
-  const audioCtxRef = useRef<AudioContext | null>(null);
-  const priorCallingIdsRef = useRef<Set<string>>(new Set());
-  const priorChangeCallingIdsRef = useRef<Set<string>>(new Set());
-
-  function playChime() {
-    const ctx = audioCtxRef.current;
-    if (!ctx) return;
-    playBellChime(ctx, 1);
-  }
-
-  function playChangeAlert() {
-    const ctx = audioCtxRef.current;
-    if (!ctx) return;
-    playChangeChime(ctx, 1);
-  }
-
-  function enableSound() {
-    const AudioCtx = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
-    audioCtxRef.current = new AudioCtx();
-    setSoundEnabled(true);
-    rememberSoundAlertsEnabled();
-    playChime();
-  }
-
-  function disableSound() {
-    audioCtxRef.current?.close().catch(() => {});
-    audioCtxRef.current = null;
-    setSoundEnabled(false);
-    forgetSoundAlertsEnabled();
-  }
-
-  // Re-enable silently (no chime, no button) if this device already opted
-  // in on a previous visit.
-  useEffect(() => {
-    if (!hasSoundAlertsEnabled() || audioCtxRef.current) return;
-    const AudioCtx = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
-    const ctx = new AudioCtx();
-    audioCtxRef.current = ctx;
-    ctx.resume().catch(() => {});
-    setSoundEnabled(true);
-  }, []);
 
   // Keep in sync if the server re-renders this page with fresh data
   // (e.g. right after adding a new table).
   useEffect(() => {
     setTables(initialTables);
-    priorCallingIdsRef.current = new Set(
-      initialTables.filter((t) => t.session?.waiterCallRequestedAt).map((t) => t.id),
-    );
-    priorChangeCallingIdsRef.current = new Set(
-      initialTables.filter((t) => t.session?.changeCallRequestedAt).map((t) => t.id),
-    );
   }, [initialTables]);
 
   async function refreshTables() {
     const res = await fetch("/api/admin/tables/live");
     if (!res.ok) return;
-    const fresh: LiveTable[] = await res.json();
-
-    const currentCallingIds = new Set(
-      fresh.filter((t) => t.session?.waiterCallRequestedAt).map((t) => t.id),
-    );
-    const hasNewCall = [...currentCallingIds].some((id) => !priorCallingIdsRef.current.has(id));
-    if (hasNewCall && soundEnabled) {
-      playChime();
-    }
-    priorCallingIdsRef.current = currentCallingIds;
-
-    const currentChangeCallingIds = new Set(
-      fresh.filter((t) => t.session?.changeCallRequestedAt).map((t) => t.id),
-    );
-    const hasNewChangeCall = [...currentChangeCallingIds].some(
-      (id) => !priorChangeCallingIdsRef.current.has(id),
-    );
-    if (hasNewChangeCall && soundEnabled) {
-      playChangeAlert();
-    }
-    priorChangeCallingIdsRef.current = currentChangeCallingIds;
-
-    setTables(fresh);
+    setTables(await res.json());
   }
 
   useEffect(() => {
@@ -136,8 +59,7 @@ export default function LiveOrdersBoard({ initialTables }: { initialTables: Live
       cancelled = true;
       clearInterval(interval);
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [soundEnabled]);
+  }, []);
 
   async function handleStatusChange(orderId: string, status: string) {
     setSavingOrderId(orderId);
@@ -195,42 +117,12 @@ export default function LiveOrdersBoard({ initialTables }: { initialTables: Live
   const waiterCallTables = tables.filter((t) => t.session?.waiterCallRequestedAt);
   const changeCallTables = tables.filter((t) => t.session?.changeCallRequestedAt);
 
-  useEffect(() => {
-    if (!soundEnabled || waiterCallTables.length === 0) return;
-    const interval = setInterval(playChime, REPEAT_BEEP_MS);
-    return () => clearInterval(interval);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [soundEnabled, waiterCallTables.length]);
-
-  useEffect(() => {
-    if (!soundEnabled || changeCallTables.length === 0) return;
-    const interval = setInterval(playChangeAlert, REPEAT_BEEP_MS);
-    return () => clearInterval(interval);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [soundEnabled, changeCallTables.length]);
-
   const visibleTables = tables.filter(
     (t) => tableFilter === "ALL" || String(t.tableNumber) === tableFilter,
   );
 
   return (
     <>
-      {soundEnabled ? (
-        <button
-          onClick={disableSound}
-          className="mb-4 flex w-full items-center justify-center gap-2 rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm font-medium text-slate-600 shadow-sm transition hover:bg-slate-50"
-        >
-          🔔 Alerts on — tap to mute
-        </button>
-      ) : (
-        <button
-          onClick={enableSound}
-          className="mb-4 flex w-full items-center justify-center gap-2 rounded-xl bg-amber-500 px-4 py-3 text-base font-semibold text-stone-900 shadow-md transition hover:bg-amber-400"
-        >
-          🔔 Tap to enable call alerts
-        </button>
-      )}
-
       {waiterCallTables.length > 0 && (
         <div className="mb-4 flex items-center gap-3 rounded-xl border border-red-300 bg-gradient-to-r from-red-50 to-rose-50 p-4 shadow-sm">
           <span className="relative flex h-3 w-3">

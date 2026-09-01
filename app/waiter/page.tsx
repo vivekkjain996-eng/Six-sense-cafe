@@ -5,6 +5,7 @@ import { db } from "@/lib/db";
 import WaiterHeader from "@/components/waiter/WaiterHeader";
 import WaiterAlertBoard from "@/components/waiter/WaiterAlertBoard";
 import PushNotificationSetup from "@/components/shared/PushNotificationSetup";
+import CallAlertListener from "@/components/shared/CallAlertListener";
 
 export default async function WaiterPage() {
   const session = await getAdminSession();
@@ -23,6 +24,7 @@ export default async function WaiterPage() {
 
       <main className="mx-auto max-w-3xl p-4">
         <PushNotificationSetup />
+        <CallAlertListener />
         <WaiterAlertBoard initialTables={tables} />
       </main>
     </div>
