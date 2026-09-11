@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { getAdminSession } from "@/lib/auth";
-import { generateTableQrSvg } from "@/lib/qr";
+import { generateTableQrPng } from "@/lib/qr";
 
 export async function GET(_req: Request, { params }: { params: Promise<{ id: string }> }) {
   const session = await getAdminSession();
@@ -17,12 +17,12 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
     return NextResponse.json({ error: "Table not found" }, { status: 404 });
   }
 
-  const svg = await generateTableQrSvg(table.qrToken, table.tableNumber);
+  const png = await generateTableQrPng(table.qrToken, table.tableNumber);
 
-  return new NextResponse(svg, {
+  return new NextResponse(new Uint8Array(png), {
     headers: {
-      "Content-Type": "image/svg+xml",
-      "Content-Disposition": `attachment; filename="table-${table.tableNumber}-qr.svg"`,
+      "Content-Type": "image/png",
+      "Content-Disposition": `attachment; filename="table-${table.tableNumber}-qr.png"`,
     },
   });
 }
